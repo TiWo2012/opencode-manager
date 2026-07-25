@@ -44,6 +44,7 @@ import { decodeDataUrl } from "@/util/data-url"
 import { Process } from "@/util/process"
 import { Cause, Effect, Exit, Latch, Layer, Option, Scope, Context, Schema, Types } from "effect"
 import { InstanceState } from "@/effect/instance-state"
+import { InstanceRef } from "@/effect/instance-ref"
 import { TaskTool, type TaskPromptOps } from "@/tool/task"
 import { SessionRunState } from "./run-state"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -319,6 +320,108 @@ const layer = Layer.effect(
         throw error
       }
 
+      // Background mode: fork the task and return immediately so the prompt loop continues
+      if (task.background) {
+        const runBackground = Effect.fn("SessionPrompt.handleSubtask.background")(function* () {
+          let bgPart = part
+          let error: Error | undefined
+          const taskAbort = new AbortController()
+          const result = yield* taskTool
+            .execute(taskArgs, {
+              agent: task.agent,
+              messageID: assistantMessage.id,
+              sessionID,
+              abort: taskAbort.signal,
+              callID: part.callID,
+              extra: { bypassAgentCheck: true, promptOps, background: true },
+              messages: msgs,
+              metadata: (val: { title?: string; metadata?: Record<string, any> }) =>
+                Effect.gen(function* () {
+                  bgPart = yield* sessions.updatePart({
+                    ...bgPart,
+                    type: "tool",
+                    state: { ...bgPart.state, ...val },
+                  } satisfies SessionV1.ToolPart)
+                }),
+              ask: (req: any) =>
+                permission
+                  .ask({
+                    ...req,
+                    sessionID,
+                    ruleset: Permission.merge(taskAgent.permission, session.permission ?? []),
+                  })
+                  .pipe(Effect.orDie),
+            })
+            .pipe(
+              Effect.catchCause((cause) => {
+                const defect = Cause.squash(cause)
+                error = defect instanceof Error ? defect : new Error(String(defect))
+                return Effect.logError("background subtask execution failed", {
+                  error,
+                  agent: task.agent,
+                  description: task.description,
+                })
+              }),
+            )
+
+          const attachments = result?.attachments?.map((attachment) => ({
+            ...attachment,
+            id: PartID.ascending(),
+            sessionID,
+            messageID: assistantMessage.id,
+          }))
+
+          yield* plugin.trigger(
+            "tool.execute.after",
+            { tool: TaskTool.id, sessionID, callID: part.id, args: taskArgs },
+            result,
+          )
+
+          assistantMessage.finish = "tool-calls"
+          assistantMessage.time.completed = Date.now()
+          yield* sessions.updateMessage(assistantMessage)
+
+          if (result && bgPart.state.status === "running") {
+            yield* sessions.updatePart({
+              ...bgPart,
+              state: {
+                status: "completed",
+                input: bgPart.state.input,
+                title: result.title,
+                metadata: result.metadata,
+                output: result.output,
+                attachments,
+                time: { ...bgPart.state.time, end: Date.now() },
+              },
+            } satisfies SessionV1.ToolPart)
+          }
+
+          if (!result) {
+            yield* sessions.updatePart({
+              ...bgPart,
+              state: {
+                status: "error",
+                error: error ? `Tool execution failed: ${error.message}` : "Tool execution failed",
+                time: {
+                  start: bgPart.state.status === "running" ? bgPart.state.time.start : Date.now(),
+                  end: Date.now(),
+                },
+                metadata: bgPart.state.status === "pending" ? undefined : bgPart.state.metadata,
+                input: bgPart.state.input,
+              },
+            } satisfies SessionV1.ToolPart)
+          }
+        })
+
+        // Fork and return immediately — the background task runs independently
+        yield* runBackground().pipe(
+          Effect.catchCause((cause) => Effect.logError("background subtask fiber failed", { cause })),
+          Effect.forkIn(scope),
+        )
+        return
+      }
+
+      // Blocking mode: wait for the task to complete
       let error: Error | undefined
       const taskAbort = new AbortController()
       const result = yield* taskTool
@@ -1067,6 +1170,20 @@ const layer = Layer.effect(
       }
 
       if (input.noReply === true) return message
+
+      // If this session operates in a different directory (e.g. a worktree subagent),
+      // provide a scoped InstanceRef so tools see the correct working directory.
+      const ctx = yield* InstanceState.context
+      const instanceRef = yield* InstanceRef
+      if (session.directory !== ctx.directory && instanceRef) {
+        return yield* loop({ sessionID: input.sessionID }).pipe(
+          Effect.provideService(InstanceRef, {
+            directory: session.directory,
+            worktree: instanceRef.worktree,
+            project: instanceRef.project,
+          }),
+        )
+      }
       return yield* loop({ sessionID: input.sessionID })
     })
 

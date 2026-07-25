@@ -99,6 +99,7 @@ const SessionRow = (props: {
   hasPermissions: Accessor<boolean>
   hasError: Accessor<boolean>
   unseenCount: Accessor<number>
+  runningChildren?: Accessor<number>
   clearHoverProjectSoon: () => void
   sidebarOpened: Accessor<boolean>
   warmPress: () => void
@@ -139,6 +140,11 @@ const SessionRow = (props: {
         </div>
       </Show>
       <span class="text-14-regular text-text-strong min-w-0 flex-1 truncate">{title()}</span>
+      <Show when={props.runningChildren && (props.runningChildren?.() ?? 0) > 0}>
+        <span class="shrink-0 text-10-regular text-text-interactive-base tabular-nums">
+          {props.runningChildren?.()} running
+        </span>
+      </Show>
     </A>
   )
 }
@@ -176,6 +182,12 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
     if (!props.showChild) return
     return childSessionOnPath(sessionStore.session, props.session.id, params.id)
   })
+  const runningChildren = createMemo(() => {
+    if (!props.showChild) return 0
+    return sessionStore.session.filter(
+      (s) => s.parentID === props.session.id && serverSync().session.data.session_working(s.id),
+    ).length
+  })
 
   const warm = (span: number, priority: "high" | "low") => {
     const nav = props.navList?.()
@@ -208,6 +220,7 @@ export const SessionItem = (props: SessionItemProps): JSX.Element => {
       hasPermissions={hasPermissions}
       hasError={hasError}
       unseenCount={unseenCount}
+      runningChildren={runningChildren}
       clearHoverProjectSoon={props.clearHoverProjectSoon}
       sidebarOpened={layout.sidebar.opened}
       warmPress={() => warm(2, "high")}

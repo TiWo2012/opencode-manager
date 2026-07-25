@@ -24,6 +24,7 @@ import { disposeAllInstances } from "../fixture/fixture"
 import { testEffect } from "../lib/effect"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
+import { Worktree } from "@/worktree"
 
 afterEach(async () => {
   await disposeAllInstances()
@@ -34,25 +35,37 @@ const ref = {
   modelID: ModelV2.ID.make("test-model"),
 }
 
+const worktreeMock = Layer.succeed(Worktree.Service, Worktree.Service.of({
+  makeWorktreeInfo: () => Effect.die("not implemented"),
+  createFromInfo: () => Effect.die("not implemented"),
+  create: () => Effect.die("not implemented"),
+  list: () => Effect.succeed([]),
+  remove: () => Effect.die("not implemented"),
+  reset: () => Effect.die("not implemented"),
+}))
+
 const layer = (flags: Partial<RuntimeFlags.Info> = {}) =>
-  LayerNode.compile(
-    LayerNode.group([
-      Agent.node,
-      BackgroundJob.node,
-      EventV2Bridge.node,
-      Config.node,
-      CrossSpawnSpawner.node,
-      Session.node,
-      SessionProjector.node,
-      SessionRunState.node,
-      SessionStatus.node,
-      Truncate.node,
-      ToolRegistry.node,
-      Database.node,
-      RuntimeFlags.node,
-      Ripgrep.node,
-    ]),
-    [[RuntimeFlags.node, RuntimeFlags.layer(flags)]],
+  Layer.mergeAll(
+    LayerNode.compile(
+      LayerNode.group([
+        Agent.node,
+        BackgroundJob.node,
+        EventV2Bridge.node,
+        Config.node,
+        CrossSpawnSpawner.node,
+        Session.node,
+        SessionProjector.node,
+        SessionRunState.node,
+        SessionStatus.node,
+        Truncate.node,
+        ToolRegistry.node,
+        Database.node,
+        RuntimeFlags.node,
+        Ripgrep.node,
+      ]),
+      [[RuntimeFlags.node, RuntimeFlags.layer(flags)], [Worktree.node, worktreeMock]],
+    ),
+    worktreeMock,
   )
 
 const it = testEffect(layer())
@@ -388,16 +401,17 @@ describe("tool.task", () => {
     }),
   )
 
-  it.instance("prevents subagents from launching subagents by default", () =>
+  it.instance("prevents subagents from launching subagents at max depth", () =>
     Effect.gen(function* () {
       const sessions = yield* Session.Service
       const { chat, assistant } = yield* seed()
       const child = yield* sessions.create({ parentID: chat.id, title: "child" })
+      const grandchild = yield* sessions.create({ parentID: child.id, title: "grandchild" })
       const nestedAssistant = yield* sessions.updateMessage({
         ...assistant,
         id: MessageID.ascending(),
         parentID: MessageID.ascending(),
-        sessionID: child.id,
+        sessionID: grandchild.id,
       })
       const tool = yield* TaskTool
       const def = yield* tool.init()
@@ -411,7 +425,7 @@ describe("tool.task", () => {
             subagent_type: "general",
           },
           {
-            sessionID: child.id,
+            sessionID: grandchild.id,
             messageID: nestedAssistant.id,
             agent: "general",
             abort: new AbortController().signal,
@@ -425,7 +439,7 @@ describe("tool.task", () => {
 
       expect(Exit.isFailure(exit)).toBe(true)
       expect(asked).toBe(false)
-      expect(yield* sessions.children(child.id)).toHaveLength(0)
+      expect(yield* sessions.children(grandchild.id)).toHaveLength(0)
     }),
   )
 
@@ -534,37 +548,6 @@ describe("tool.task", () => {
         },
       },
     },
-  )
-
-  it.instance("rejects background execution when the experiment is disabled", () =>
-    Effect.gen(function* () {
-      const { chat, assistant } = yield* seed()
-      const tool = yield* TaskTool
-      const def = yield* tool.init()
-
-      const exit = yield* def
-        .execute(
-          {
-            description: "inspect bug",
-            prompt: "look into the cache key path",
-            subagent_type: "general",
-            background: true,
-          },
-          {
-            sessionID: chat.id,
-            messageID: assistant.id,
-            agent: "build",
-            abort: new AbortController().signal,
-            extra: { promptOps: stubOps() },
-            messages: [],
-            metadata: () => Effect.void,
-            ask: () => Effect.void,
-          },
-        )
-        .pipe(Effect.exit)
-
-      expect(Exit.isFailure(exit)).toBe(true)
-    }),
   )
 
   it.instance("promotes a running foreground task without restarting it", () =>

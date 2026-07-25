@@ -79,10 +79,10 @@ export const Info = Schema.Struct({
   }),
   default_agent: Schema.optional(Schema.String).annotate({
     description:
-      "Default agent to use when none is specified. Must be a primary agent. Falls back to 'build' if not set or if the specified agent is invalid.",
+      "Default agent to use when none is specified. Must be a primary agent. Falls back to 'orchestrator' if not set or if the specified agent is invalid.",
   }),
   subagent_depth: Schema.optional(NonNegativeInt).annotate({
-    description: "Maximum subagent nesting depth. Defaults to 1, which prevents subagents from launching subagents.",
+    description: "Maximum subagent nesting depth. Defaults to 2, which allows subagents to spawn one level of sub-subagents.",
   }),
   username: Schema.optional(Schema.String).annotate({
     description: "Custom username to display in conversations instead of system username",

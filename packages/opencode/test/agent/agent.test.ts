@@ -646,17 +646,17 @@ it.instance(
   },
 )
 
-it.instance("defaultAgent returns build when no default_agent config", () =>
+it.instance("defaultAgent returns orchestrator when no default_agent config", () =>
   Effect.gen(function* () {
     const agent = yield* load((svc) => svc.defaultAgent())
-    expect(agent).toBe("build")
+    expect(agent).toBe("orchestrator")
   }),
 )
 
-it.instance("defaultInfo returns resolved build agent when no default_agent config", () =>
+it.instance("defaultInfo returns resolved orchestrator agent when no default_agent config", () =>
   Effect.gen(function* () {
     const agent = yield* load((svc) => svc.defaultInfo())
-    expect(agent.name).toBe("build")
+    expect(agent.name).toBe("orchestrator")
     expect(agent.mode).toBe("primary")
   }),
 )
@@ -725,17 +725,17 @@ it.instance(
 )
 
 it.instance(
-  "defaultAgent returns plan when build is disabled and default_agent not set",
+  "defaultAgent returns build when orchestrator is disabled and default_agent not set",
   () =>
     Effect.gen(function* () {
       const agent = yield* load((svc) => svc.defaultAgent())
-      // build is disabled, so it should return plan (next primary agent)
-      expect(agent).toBe("plan")
+      // orchestrator is disabled, so it falls back to first primary agent (build)
+      expect(agent).toBe("build")
     }),
   {
     config: {
       agent: {
-        build: { disable: true },
+        orchestrator: { disable: true },
       },
     },
   },
@@ -747,6 +747,7 @@ it.instance(
   {
     config: {
       agent: {
+        orchestrator: { disable: true },
         build: { disable: true },
         plan: { disable: true },
       },

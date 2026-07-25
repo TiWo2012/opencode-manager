@@ -12,6 +12,7 @@ import { ProviderTransform } from "@/provider/transform"
 import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
+import PROMPT_ORCHESTRATOR from "./prompt/orchestrator.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
@@ -216,6 +217,27 @@ const layer = Layer.effect(
             mode: "subagent",
             native: true,
           },
+          orchestrator: {
+            name: "orchestrator",
+            description:
+              "Orchestrator agent that manages parallel subagents in isolated worktrees. " +
+              "Creates worktrees for each task, launches subagents in the background, " +
+              "manages a todo list, and reviews/merges results. " +
+              "Can accept new tasks from the user while subagents are running.",
+            options: {},
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                task: "allow",
+                todowrite: "allow",
+                question: "allow",
+              }),
+              user,
+            ),
+            prompt: PROMPT_ORCHESTRATOR,
+            mode: "primary",
+            native: true,
+          },
           compaction: {
             name: "compaction",
             mode: "primary",
@@ -319,7 +341,7 @@ const layer = Layer.effect(
             agents,
             values(),
             sortBy(
-              [(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "build"), "desc"],
+              [(x) => (cfg.default_agent ? x.name === cfg.default_agent : x.name === "orchestrator"), "desc"],
               [(x) => x.name, "asc"],
             ),
           )
@@ -334,7 +356,8 @@ const layer = Layer.effect(
             if (agent.hidden === true) throw new Error(`default agent "${c.default_agent}" is hidden`)
             return agent
           }
-          const visible = Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
+          const visible = Object.values(agents).find((a) => a.name === "orchestrator")
+            ?? Object.values(agents).find((a) => a.mode !== "subagent" && a.hidden !== true)
           if (!visible) throw new Error("no primary visible agent found")
           return visible
         })

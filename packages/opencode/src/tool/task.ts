@@ -10,6 +10,7 @@ import { Agent } from "../agent/agent"
 import { deriveSubagentSessionPermission } from "../agent/subagent-permissions"
 import type { SessionPrompt } from "../session/prompt"
 import { Config } from "@/config/config"
+import { Worktree } from "@/worktree"
 import { Effect, Exit, Schema, Scope } from "effect"
 import { EffectBridge } from "@/effect/bridge"
 import { RuntimeFlags } from "@/effect/runtime-flags"
@@ -49,6 +50,12 @@ const BaseParameterFields = {
       "This should only be set if you mean to resume a previous task (you can pass a prior task_id and the task will continue the same subagent session as before instead of creating a fresh one)",
   }),
   command: Schema.optional(Schema.String).annotate({ description: "The command that triggered this task" }),
+  workdir: Schema.optional(Schema.String).annotate({
+    description:
+      "Working directory for the subagent. Use this to run the subagent inside a GitHub worktree. " +
+      "When specified, a git worktree is automatically created for the subagent. " +
+      "If not set, the subagent inherits the parent's working directory.",
+  }),
 }
 
 const BaseParameters = Schema.Struct(BaseParameterFields)
@@ -85,6 +92,7 @@ export const TaskTool = Tool.define(
     const background = yield* BackgroundJob.Service
     const config = yield* Config.Service
     const sessions = yield* Session.Service
+    const worktree = yield* Worktree.Service
     const scope = yield* Scope.Scope
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
@@ -95,11 +103,6 @@ export const TaskTool = Tool.define(
     ) {
       const cfg = yield* config.get()
       const runInBackground = params.background === true
-      if (runInBackground && !flags.experimentalBackgroundSubagents) {
-        return yield* Effect.fail(
-          new Error("Background subagents require OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true"),
-        )
-      }
 
       const parent = yield* sessions.get(ctx.sessionID)
       let current = parent
@@ -108,10 +111,10 @@ export const TaskTool = Tool.define(
         depth++
         current = yield* sessions.get(current.parentID)
       }
-      if (depth >= (cfg.subagent_depth ?? 1)) {
+      if (depth >= (cfg.subagent_depth ?? 2)) {
         return yield* Effect.fail(
           new Error(
-            `Subagent depth limit reached (${cfg.subagent_depth ?? 1}). Increase "subagent_depth" to allow nested subagents.`,
+            `Subagent depth limit reached (${cfg.subagent_depth ?? 2}). Increase "subagent_depth" to allow deeper nesting.`,
           ),
         )
       }
@@ -136,6 +139,14 @@ export const TaskTool = Tool.define(
       const session = params.task_id
         ? yield* sessions.get(SessionID.make(params.task_id)).pipe(Effect.catchCause(() => Effect.succeed(undefined)))
         : undefined
+
+      // Create worktree if workdir is specified
+      let childDirectory: string | undefined
+      if (params.workdir && !session) {
+        const info = yield* worktree.create({ name: params.workdir })
+        childDirectory = info.directory
+      }
+
       const childPermission = deriveSubagentSessionPermission({
         parentSessionPermission: parent.permission ?? [],
         subagent: next,
@@ -169,6 +180,7 @@ export const TaskTool = Tool.define(
                 ),
             ),
           ],
+          ...(childDirectory ? { directory: childDirectory } : {}),
         }))
 
       const msg = yield* MessageV2.get({ sessionID: ctx.sessionID, messageID: ctx.messageID }).pipe(
@@ -348,11 +360,9 @@ export const TaskTool = Tool.define(
     })
 
     return {
-      description: flags.experimentalBackgroundSubagents
-        ? [DESCRIPTION, BACKGROUND_DESCRIPTION].join("\n\n")
-        : DESCRIPTION,
+      description: [DESCRIPTION, BACKGROUND_DESCRIPTION].join("\n\n"),
       parameters: Parameters,
-      jsonSchema: flags.experimentalBackgroundSubagents ? undefined : ToolJsonSchema.fromSchema(BaseParameters),
+      jsonSchema: undefined,
       execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
         run(params, ctx).pipe(Effect.orDie),
     }

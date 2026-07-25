@@ -266,6 +266,7 @@ export const CreateInput = Schema.optional(
     metadata: Schema.optional(Metadata),
     permission: Schema.optional(PermissionV1.Ruleset),
     workspaceID: Schema.optional(WorkspaceV2.ID),
+    directory: Schema.optional(Schema.String),
   }),
 )
 export type CreateInput = Types.DeepMutable<Schema.Schema.Type<typeof CreateInput>>
@@ -674,13 +675,15 @@ const layer: Layer.Layer<
       metadata?: typeof Metadata.Type
       permission?: PermissionV1.Ruleset
       workspaceID?: WorkspaceV2.ID
+      directory?: string
     }) {
       const ctx = yield* InstanceState.context
       const workspace = yield* InstanceState.workspaceID
+      const sessionDir = input?.directory ?? ctx.directory
       return yield* createNext({
         parentID: input?.parentID,
-        directory: ctx.directory,
-        path: sessionPath(ctx.worktree, ctx.directory),
+        directory: sessionDir,
+        path: sessionPath(ctx.worktree, sessionDir),
         title: input?.title,
         agent: input?.agent,
         model: input?.model,

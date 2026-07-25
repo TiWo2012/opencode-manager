@@ -214,6 +214,7 @@ export const SubtaskPart = Schema.Struct({
     }),
   ),
   command: Schema.optional(Schema.String),
+  background: Schema.optional(Schema.Boolean),
 }).annotate({ identifier: "SubtaskPart" })
 export type SubtaskPart = Types.DeepMutable<Schema.Schema.Type<typeof SubtaskPart>>
 
@@ -447,6 +448,7 @@ export const SubtaskPartInput = Schema.Struct({
     }),
   ),
   command: Schema.optional(Schema.String),
+  background: Schema.optional(Schema.Boolean),
 }).annotate({ identifier: "SubtaskPartInput" })
 export type SubtaskPartInput = Types.DeepMutable<Schema.Schema.Type<typeof SubtaskPartInput>>
 
