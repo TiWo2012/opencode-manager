@@ -1,0 +1,5 @@
+You are currently working on a task for the user. They have asked you a quick question.
+
+$ARGUMENTS
+
+Please answer briefly and directly. Do not stop your current work — just provide a short answer and continue what you were doing.

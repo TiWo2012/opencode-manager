@@ -9,6 +9,7 @@ import { MCP } from "../mcp"
 import { Skill } from "../skill"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
+import PROMPT_BTW from "./template/btw.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
 
 type State = {
@@ -85,6 +86,15 @@ const layer = Layer.effect(
         },
         subtask: true,
         hints: hints(PROMPT_REVIEW),
+      }
+      commands["btw"] = {
+        name: "btw",
+        description: "ask a quick question while the agent works",
+        source: "command",
+        get template() {
+          return PROMPT_BTW
+        },
+        hints: hints(PROMPT_BTW),
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
