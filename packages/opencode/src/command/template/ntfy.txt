@@ -1,0 +1,29 @@
+You are configuring ntfy push notifications for this OpenCode session.
+
+The user wants to connect to an ntfy server and set up notifications.
+
+$ARGUMENTS
+
+## What to do
+
+1. If the user provides a server URL, note it. Default is https://ntfy.sh
+2. If the user provides a topic name, note it. This is the channel name for notifications.
+3. If the user provides an auth token, note it.
+4. If the user just wants to send a notification, ask them for the message content.
+5. Explain how the ntfy tool works and confirm the configuration.
+
+## Configuration
+
+ntfy is a push notification service. You can:
+- Post notifications to any ntfy server via HTTP POST
+- Use the ntfy tool to send messages to configured channels
+- Default server: https://ntfy.sh
+- Topic names are channel identifiers (e.g., "alerts", "deployments")
+
+## Example usage
+
+To send a notification:
+- Use the ntfy tool with url, topic, and message parameters
+
+To configure a custom server:
+- The user can set ntfy servers in their opencode.json under the "ntfy" key
