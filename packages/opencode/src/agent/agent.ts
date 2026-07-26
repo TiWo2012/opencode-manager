@@ -13,6 +13,7 @@ import PROMPT_GENERATE from "./generate.txt"
 import PROMPT_COMPACTION from "./prompt/compaction.txt"
 import PROMPT_EXPLORE from "./prompt/explore.txt"
 import PROMPT_ORCHESTRATOR from "./prompt/orchestrator.txt"
+import PROMPT_PLANNER from "./prompt/planner.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 import { Permission } from "@/permission"
@@ -236,6 +237,34 @@ const layer = Layer.effect(
             ),
             prompt: PROMPT_ORCHESTRATOR,
             mode: "primary",
+            native: true,
+          },
+          planner: {
+            name: "planner",
+            description:
+              "Task decomposition and planning specialist. " +
+              "Analyzes user requests, explores the codebase, and produces " +
+              "structured plans with worktree names, subagent type recommendations, " +
+              "and dependency ordering for the orchestrator to execute.",
+            permission: Permission.merge(
+              defaults,
+              Permission.fromConfig({
+                "*": "deny",
+                read: "allow",
+                grep: "allow",
+                glob: "allow",
+                bash: "allow",
+                webfetch: "allow",
+                websearch: "allow",
+                question: "allow",
+                todowrite: "allow",
+                external_directory: readonlyExternalDirectory,
+              }),
+              user,
+            ),
+            prompt: PROMPT_PLANNER,
+            options: {},
+            mode: "subagent",
             native: true,
           },
           compaction: {
