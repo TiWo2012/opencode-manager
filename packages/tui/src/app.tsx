@@ -521,6 +521,20 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
   })
 
+  // Auto-restore: when no explicit session flags are given, restore the most recent
+  // root session for the current project directory once the session list has loaded.
+  let autoRestored = false
+  createEffect(() => {
+    if (autoRestored || sync.status !== "complete" || args.continue || args.sessionID) return
+    const match = sync.data.session
+      .toSorted((a, b) => b.time.updated - a.time.updated)
+      .find((x) => x.parentID === undefined)?.id
+    if (match) {
+      autoRestored = true
+      route.navigate({ type: "session", sessionID: match })
+    }
+  })
+
   // Handle --session with --fork: wait for sync to be fully complete before forking
   // (session list loads in non-blocking phase for --session, so we must wait for "complete"
   // to avoid a race where reconcile overwrites the newly forked session)
