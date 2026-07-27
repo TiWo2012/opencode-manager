@@ -83,10 +83,43 @@ function sessionInfo(session: Session): SessionInfo {
   }
 }
 
+function createV2Api(api: ServerApi): CompatibleApi {
+  return {
+    ...api,
+    session: {
+      ...api.session,
+      async prompt(value: SessionPromptInput & LegacyPrompt) {
+        return (api.session.prompt as any)({
+          sessionID: value.sessionID,
+          id: value.id,
+          prompt: {
+            text: value.text,
+            files: value.files?.map((file) => ({
+              uri: file.uri,
+              name: file.name,
+              source: file.mention
+                ? { start: file.mention.start, end: file.mention.end, text: file.mention.text }
+                : undefined,
+            })),
+            agents: value.agents?.map((agent) => ({
+              name: agent.name,
+              source: agent.mention
+                ? { start: agent.mention.start, end: agent.mention.end, text: agent.mention.text }
+                : undefined,
+            })),
+          },
+          delivery: value.delivery,
+        })
+      },
+    },
+  }
+}
+
 export function createCompatibleApi(input: CompatibleInput): CompatibleApi {
   const v1 = createV1Api(input)
+  const v2 = createV2Api(input.current)
   return lazyApi(
-    input.protocol.then((protocol) => (protocol === "v1" ? v1 : input.current)),
+    input.protocol.then((protocol) => (protocol === "v1" ? v1 : v2)),
     input.current,
   )
 }
