@@ -1,29 +1,43 @@
 You are configuring ntfy push notifications for this OpenCode session.
 
-The user wants to connect to an ntfy server and set up notifications.
+The user wants to send ntfy notifications.
 
 $ARGUMENTS
 
 ## What to do
 
-1. If the user provides a server URL, note it. Default is https://ntfy.sh
-2. If the user provides a topic name, note it. This is the channel name for notifications.
-3. If the user provides an auth token, note it.
-4. If the user just wants to send a notification, ask them for the message content.
-5. Explain how the ntfy tool works and confirm the configuration.
+1. If the user provides a message, send it using the ntfy tool.
+2. If the user wants to configure a server, edit their opencode.jsonc under the `"ntfy"` section with server URL, topic, and optional auth.
+3. The ntfy tool reads server configuration automatically from opencode.jsonc — no need to pass url, topic, or auth manually.
 
 ## Configuration
 
-ntfy is a push notification service. You can:
-- Post notifications to any ntfy server via HTTP POST
-- Use the ntfy tool to send messages to configured channels
-- Default server: https://ntfy.sh
-- Topic names are channel identifiers (e.g., "alerts", "deployments")
+ntfy is a push notification service. To use it, add a server to your opencode.jsonc:
 
-## Example usage
+```jsonc
+{
+  "ntfy": {
+    "enabled": true,
+    "servers": {
+      "home": {
+        "url": "https://ntfy.example.com",
+        "topic": "my-channel",
+        "auth": "Basic dXNlcjpwYXNz"
+      }
+    }
+  }
+}
+```
 
-To send a notification:
-- Use the ntfy tool with url, topic, and message parameters
+## Auth formats
 
-To configure a custom server:
-- The user can set ntfy servers in their opencode.json under the "ntfy" key
+- Basic Auth: `"Basic <base64(username:password)>"`
+- Bearer token: `"Bearer tk_abc123"`
+
+## Usage
+
+The ntfy tool only needs:
+- `message` (required) — what to send
+- `title` (optional) — notification title
+- `topic` (optional) — override the configured topic
+- `server` (optional) — pick a named server from config (defaults to the first one)

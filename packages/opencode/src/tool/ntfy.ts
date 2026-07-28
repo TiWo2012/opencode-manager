@@ -1,12 +1,17 @@
 import { Effect, Schema } from "effect"
 import { HttpClient, HttpClientRequest } from "effect/unstable/http"
 import * as Tool from "./tool"
+import { Config } from "@/config/config"
 
 export const Parameters = Schema.Struct({
-  url: Schema.String.annotate({ description: "The ntfy server URL (e.g., https://ntfy.sh)" }),
-  topic: Schema.String.annotate({ description: "The ntfy topic to post to" }),
   message: Schema.String.annotate({ description: "The notification message" }),
   title: Schema.String.pipe(Schema.optional).annotate({ description: "Optional notification title" }),
+  topic: Schema.String.pipe(Schema.optional).annotate({
+    description: "Override the configured ntfy topic",
+  }),
+  server: Schema.String.pipe(Schema.optional).annotate({
+    description: "Named server from config to use (defaults to the first configured server)",
+  }),
 })
 
 export const NtfyTool = Tool.define(
@@ -14,19 +19,49 @@ export const NtfyTool = Tool.define(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient
     const httpOk = HttpClient.filterStatusOk(http)
+    const config = yield* Config.Service
 
     return {
       description: "Send a push notification via ntfy.sh",
       parameters: Parameters,
-      execute: (params: Schema.Schema.Type<typeof Parameters>, ctx: Tool.Context) =>
+      execute: (params: Schema.Schema.Type<typeof Parameters>, _ctx: Tool.Context) =>
         Effect.gen(function* () {
-          const baseUrl = params.url.endsWith("/") ? params.url.slice(0, -1) : params.url
-          const notifyUrl = `${baseUrl}/${params.topic}`
+          const cfg = yield* config.get()
+          const servers = cfg.ntfy?.servers
+          if (!servers || Object.keys(servers).length === 0) {
+            return yield* Effect.die(
+              new Error('ntfy is not configured. Add a server under the "ntfy" section in opencode.jsonc.'),
+            )
+          }
+
+          const entry = params.server
+            ? servers[params.server]
+            : servers[Object.keys(servers)[0]!]
+
+          if (!entry) {
+            return yield* Effect.die(
+              new Error(
+                params.server
+                  ? `ntfy server "${params.server}" not found. Available servers: ${Object.keys(servers).join(", ")}`
+                  : "ntfy has no configured servers",
+              ),
+            )
+          }
+
+          const baseUrl = entry.url.endsWith("/") ? entry.url.slice(0, -1) : entry.url
+          const topic = params.topic ?? entry.topic ?? "opencode"
+          const notifyUrl = `${baseUrl}/${topic}`
+
+          const headers: Record<string, string> = {
+            "Content-Type": "text/plain",
+          }
+
+          if (entry.auth) {
+            headers["Authorization"] = entry.auth
+          }
 
           const request = HttpClientRequest.post(notifyUrl).pipe(
-            HttpClientRequest.setHeaders({
-              "Content-Type": "text/plain",
-            }),
+            HttpClientRequest.setHeaders(headers),
             HttpClientRequest.bodyText(params.message, "text/plain"),
           )
 
