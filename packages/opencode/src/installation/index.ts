@@ -11,11 +11,11 @@ import { AppProcess } from "@opencode-ai/core/process"
 import path from "path"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import semver from "semver"
-import { InstallationChannel, InstallationVersion } from "@opencode-ai/core/installation/version"
+import { InstallationChannel, InstallationVersion, InstallationLibc } from "@opencode-ai/core/installation/version"
 import { NpmConfig } from "@opencode-ai/core/npm-config"
 import { InstallationEvent } from "@opencode-ai/schema/installation-event"
 
-export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "unknown"
+export type Method = "curl" | "npm" | "yarn" | "pnpm" | "bun" | "brew" | "scoop" | "choco" | "direct" | "unknown"
 
 export type ReleaseType = "patch" | "minor" | "major"
 
@@ -71,6 +71,8 @@ const ChocoPackage = Schema.Struct({
   d: Schema.Struct({ results: Schema.Array(Schema.Struct({ Version: Schema.String })) }),
 })
 const ScoopManifest = NpmPackage
+const GitHubAsset = Schema.Struct({ name: Schema.String, browser_download_url: Schema.String })
+const GitHubReleaseDetailed = Schema.Struct({ tag_name: Schema.String, assets: Schema.Array(GitHubAsset) })
 
 export interface Interface {
   readonly info: () => Effect.Effect<Info>
@@ -164,6 +166,113 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("curl") })),
     )
 
+    const assetCandidates = Effect.fnUntraced(function* (target: string) {
+      const response = yield* httpOk.execute(
+        HttpClientRequest.get(`https://api.github.com/repos/anomalyco/opencode/releases/tags/v${target}`).pipe(
+          HttpClientRequest.acceptJson,
+        ),
+      )
+      const release = yield* HttpClientResponse.schemaBodyJson(GitHubReleaseDetailed)(response)
+      const os = process.platform === "win32" ? "windows" : process.platform
+      const arch = process.arch
+      const ext = os === "linux" ? "tar.gz" : "zip"
+
+      const names: string[] = []
+      const push = (base: string) => names.push(`${base}.${ext}`)
+
+      push(`opencode-${os}-${arch}`)
+      if (InstallationLibc === "musl") push(`opencode-${os}-${arch}-musl`)
+      push(`opencode-${os}-${arch}-baseline`)
+      if (InstallationLibc === "musl") push(`opencode-${os}-${arch}-musl-baseline`)
+
+      const asset = release.assets.find((a) => a.name && names.includes(a.name))
+      if (!asset) {
+        return yield* new UpgradeFailedError({
+          stderr: `No suitable GitHub release asset found for ${os}-${arch} (looked for: ${names.join(", ")})`,
+        })
+      }
+      return { url: asset.browser_download_url, name: asset.name, os }
+    })
+
+    const upgradeDirect = Effect.fnUntraced(
+      function* (target: string) {
+        const { url: downloadUrl, name: archiveName, os } = yield* assetCandidates(target)
+        const { mkdtempSync, realpathSync } = yield* Effect.sync(() => require("fs") as typeof import("fs"))
+        const { writeFile, chmod, rename, unlink, rm } = yield* Effect.sync(
+          () => require("fs/promises") as typeof import("fs/promises"),
+        )
+        const osMod = yield* Effect.sync(() => require("os") as typeof import("os"))
+        const tmpDir = mkdtempSync(path.join(osMod.tmpdir(), "opencode-update-"))
+
+        const archivePath = path.join(tmpDir, archiveName)
+        const dlResponse = yield* httpOk.execute(HttpClientRequest.get(downloadUrl))
+        const buffer = yield* dlResponse.arrayBuffer
+        yield* Effect.promise(() => writeFile(archivePath, Buffer.from(buffer)))
+
+        try {
+          if (os === "linux") {
+            const result = yield* appProcess.run(
+              ChildProcess.make("tar", ["-xzf", archivePath, "-C", tmpDir]),
+            )
+            if (result.exitCode !== 0) {
+              return yield* new UpgradeFailedError({
+                stderr: `Failed to extract archive (tar exit code ${result.exitCode})`,
+              })
+            }
+          } else if (process.platform === "win32") {
+            const result = yield* appProcess.run(
+              ChildProcess.make("powershell", [
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                `$global:ProgressPreference='SilentlyContinue'; Expand-Archive -Path '${archivePath}' -DestinationPath '${tmpDir}' -Force`,
+              ]),
+            )
+            if (result.exitCode !== 0) {
+              return yield* new UpgradeFailedError({
+                stderr: `Failed to extract archive (PowerShell exit code ${result.exitCode})`,
+              })
+            }
+          } else {
+            const result = yield* appProcess.run(
+              ChildProcess.make("unzip", ["-o", "-q", archivePath, "-d", tmpDir]),
+            )
+            if (result.exitCode !== 0) {
+              return yield* new UpgradeFailedError({
+                stderr: `Failed to extract archive (unzip exit code ${result.exitCode})`,
+              })
+            }
+          }
+
+          const binaryName = process.platform === "win32" ? "opencode.exe" : "opencode"
+          const newBinary = path.join(tmpDir, binaryName)
+          const currentBinary = realpathSync(process.execPath)
+          const backupPath = currentBinary + ".bak"
+
+          yield* Effect.promise(() => chmod(newBinary, 0o755))
+          yield* Effect.promise(() => rename(currentBinary, backupPath))
+          yield* Effect.promise(() => rename(newBinary, currentBinary))
+
+          const verify = yield* appProcess.run(
+            ChildProcess.make(currentBinary, ["--version"]),
+          )
+          if (verify.exitCode !== 0) {
+            yield* Effect.promise(() => rename(backupPath, currentBinary).catch(() => {}))
+            return yield* new UpgradeFailedError({ stderr: "New binary failed to run, restored previous version" })
+          }
+
+          yield* Effect.promise(() => unlink(backupPath).catch(() => {}))
+          yield* Effect.promise(() => rm(tmpDir, { recursive: true, force: true }).catch(() => {}))
+
+          return { code: 0, stdout: "", stderr: "" }
+        } catch (e) {
+          yield* Effect.promise(() => rm(tmpDir, { recursive: true, force: true }).catch(() => {}))
+          return yield* new UpgradeFailedError({ stderr: `Upgrade failed: ${errorMessage(e)}` })
+        }
+      },
+      Effect.mapError(() => new UpgradeFailedError({ stderr: upgradeFailure("direct") })),
+    )
+
     const result: Interface = {
       info: Effect.fn("Installation.info")(function* () {
         return {
@@ -172,8 +281,8 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
       }),
       method: Effect.fn("Installation.method")(function* () {
-        if (process.execPath.includes(path.join(".opencode", "bin"))) return "curl" as Method
-        if (process.execPath.includes(path.join(".local", "bin"))) return "curl" as Method
+        if (process.execPath.includes(path.join(".opencode", "bin"))) return "direct" as Method
+        if (process.execPath.includes(path.join(".local", "bin"))) return "direct" as Method
         const exec = process.execPath.toLowerCase()
 
         const checks: Array<{ name: Method; command: () => Effect.Effect<string> }> = [
@@ -265,6 +374,9 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
       upgrade: Effect.fn("Installation.upgrade")(function* (m: Method, target: string) {
         let upgradeResult: { code: number; stdout: string; stderr: string } | undefined
         switch (m) {
+          case "direct":
+            upgradeResult = yield* upgradeDirect(target)
+            break
           case "curl":
             upgradeResult = yield* upgradeCurl(target)
             break
