@@ -60,7 +60,7 @@ jobs:
           done
 
       - name: Upload
-        uses: actions/upload-artifact@5f2fc44ce3a6c0cdf8762f2b8a60eb614a53352f # v4.3.4
+        uses: actions/upload-artifact@v4.3.4
         with:
           name: console
           path: artifacts/
@@ -83,7 +83,7 @@ jobs:
           tar czf ../../webapp.tar.gz dist/
 
       - name: Upload
-        uses: actions/upload-artifact@5f2fc44ce3a6c0cdf8762f2b8a60eb614a53352f # v4.3.4
+        uses: actions/upload-artifact@v4.3.4
         with:
           name: webapp
           path: webapp.tar.gz
@@ -125,7 +125,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload
-        uses: actions/upload-artifact@5f2fc44ce3a6c0cdf8762f2b8a60eb614a53352f # v4.3.4
+        uses: actions/upload-artifact@v4.3.4
         with:
           name: desktop-${{ matrix.target }}
           path: packages/desktop/dist/
@@ -140,10 +140,10 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Download all artifacts
-        uses: actions/download-artifact@e8cbf030de2d63669c13c1aa249b35b39db27ad7 # v4.2.1
+        uses: actions/download-artifact@v4.2.1
 
       - name: Create GitHub Release
-        uses: ncipollo/release-action@a2d71a7b07ef1c0a4e77abb2040a8b60bfec6b2b # v1.16.0
+        uses: ncipollo/release-action@v1.16.0
         with:
           tag: ${{ needs.version.outputs.tag }}
           name: "Build ${{ github.run_number }} — v${{ needs.version.outputs.version }}"
