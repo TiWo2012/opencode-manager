@@ -1,4 +1,4 @@
-# OpenCode
+# OpenCode Manager
 
 An opinionated fork of [OpenCode](https://github.com/anomalyco/opencode).
 
@@ -48,7 +48,7 @@ Replace `<platform>` with your platform (e.g., `darwin-arm64`, `linux-x64`).
 
 ### Agents
 
-OpenCode includes two built-in agents you can switch between with the `Tab` key.
+OpenCode Manager includes two built-in agents you can switch between with the `Tab` key.
 
 - **build** - Default, full-access agent for development work
 - **plan** - Read-only agent for analysis and code exploration
@@ -78,7 +78,7 @@ bun run --cwd packages/desktop package
 
 To test UI changes during development:
 
-1. Start the OpenCode server (`bun dev serve`)
+1. Start the OpenCode Manager server (`bun dev serve`)
 2. Run:
 
 ```bash
@@ -89,4 +89,4 @@ bun run --cwd packages/app dev
 
 ### Contributing
 
-If you're interested in contributing to OpenCode, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.
+If you're interested in contributing to OpenCode Manager, please read our [contributing docs](./CONTRIBUTING.md) before submitting a pull request.

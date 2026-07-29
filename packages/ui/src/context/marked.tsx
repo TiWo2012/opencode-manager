@@ -7,7 +7,7 @@ import { markedCodeSpanBoundary } from "./marked-code-span"
 import { getSharedHighlighter, registerCustomTheme, ThemeRegistrationResolved } from "@pierre/diffs"
 
 export const OpenCodeTheme = {
-  name: "OpenCode",
+  name: "OpenCode Manager",
   bg: "var(--color-background-stronger)",
   fg: "var(--text-base)",
   colors: {

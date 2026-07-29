@@ -34,9 +34,7 @@ export const NtfyTool = Tool.define(
             )
           }
 
-          const entry = params.server
-            ? servers[params.server]
-            : servers[Object.keys(servers)[0]!]
+          const entry = params.server ? servers[params.server] : servers[Object.keys(servers)[0]!]
 
           if (!entry) {
             return yield* Effect.die(

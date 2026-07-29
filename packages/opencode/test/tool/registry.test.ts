@@ -17,6 +17,8 @@ import { InstanceState } from "@/effect/instance-state"
 import { ToolJsonSchema } from "@/tool/json-schema"
 import { MessageID, SessionID } from "@/session/schema"
 import { RuntimeFlags } from "@/effect/runtime-flags"
+import { InstanceBootstrap } from "../../src/project/bootstrap"
+import { InstanceStore } from "../../src/project/instance-store"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { MCP } from "@/mcp"
@@ -54,6 +56,7 @@ const root = LayerNode.group([ToolRegistry.node, Agent.node])
 const replacements = [
   [Config.node, configLayer],
   [RuntimeFlags.node, RuntimeFlags.layer()],
+  [InstanceStore.bootstrapNode, InstanceBootstrap.node],
 ] as const
 
 const it = testEffect(LayerNode.compile(root, replacements))
@@ -61,6 +64,7 @@ const withCodeMode = testEffect(
   LayerNode.compile(root, [
     [Config.node, configLayer],
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalCodeMode: true })],
+    [InstanceStore.bootstrapNode, InstanceBootstrap.node],
     [
       MCP.node,
       Layer.mock(MCP.Service, {
@@ -84,6 +88,7 @@ const withEmptyCodeMode = testEffect(
   LayerNode.compile(root, [
     [Config.node, configLayer],
     [RuntimeFlags.node, RuntimeFlags.layer({ experimentalCodeMode: true })],
+    [InstanceStore.bootstrapNode, InstanceBootstrap.node],
     [
       MCP.node,
       Layer.mock(MCP.Service, {
@@ -93,7 +98,14 @@ const withEmptyCodeMode = testEffect(
     ],
   ]),
 )
-const withBrokenPlugin = testEffect(LayerNode.compile(root, [...replacements, [Plugin.node, brokenPluginLayer]]))
+const withBrokenPlugin = testEffect(
+  LayerNode.compile(root, [
+    [Config.node, configLayer],
+    [RuntimeFlags.node, RuntimeFlags.layer()],
+    [InstanceStore.bootstrapNode, InstanceBootstrap.node],
+    [Plugin.node, brokenPluginLayer],
+  ]),
+)
 
 afterEach(async () => {
   await disposeAllInstances()

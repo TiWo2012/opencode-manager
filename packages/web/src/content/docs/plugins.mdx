@@ -1,9 +1,9 @@
 ---
 title: Plugins
-description: Write your own plugins to extend OpenCode.
+description: Write your own plugins to extend OpenCode Manager.
 ---
 
-Plugins allow you to extend OpenCode by hooking into various events and customizing behavior. You can create plugins to add new features, integrate with external services, or modify OpenCode's default behavior.
+Plugins allow you to extend OpenCode Manager by hooking into various events and customizing behavior. You can create plugins to add new features, integrate with external services, or modify OpenCode Manager's default behavior.
 
 For examples, check out the [plugins](/docs/ecosystem#plugins) created by the community.
 
@@ -32,7 +32,7 @@ Specify npm packages in your config file.
 
 ```json title="opencode.json"
 {
-  "$schema": "https://opencode.ai/config.json",
+  "$schema": "https://opencode-manager.ai/config.json",
   "plugin": ["opencode-helicone-session", "opencode-wakatime", "@my-org/custom-plugin"]
 }
 ```
@@ -56,7 +56,7 @@ Browse available plugins in the [ecosystem](/docs/ecosystem#plugins).
 Plugins are loaded from all sources and all hooks run in sequence. The load order is:
 
 1. Global config (`~/.config/opencode/opencode.json`)
-2. Project config (`opencode.json`)
+2. Project config (`opencode-manager.json`)
 3. Global plugin directory (`~/.config/opencode/plugins/`)
 4. Project plugin directory (`.opencode/plugins/`)
 
@@ -83,7 +83,7 @@ Local plugins and custom tools can use external npm packages. Add a `package.jso
 }
 ```
 
-OpenCode runs `bun install` at startup to install these. Your plugins and tools can then import them.
+OpenCode Manager runs `bun install` at startup to install these. Your plugins and tools can then import them.
 
 ```ts title=".opencode/plugins/my-plugin.ts"
 import { escape } from "shescape"
@@ -235,7 +235,7 @@ export const NotificationPlugin = async ({ project, client, $, directory, worktr
 We are using `osascript` to run AppleScript on macOS. Here we are using it to send notifications.
 
 :::note
-If you’re using the OpenCode desktop app, it can send system notifications automatically when a response is ready or when a session errors.
+If you’re using the OpenCode Manager desktop app, it can send system notifications automatically when a response is ready or when a session errors.
 :::
 
 ---
@@ -331,7 +331,7 @@ export const MyPlugin = async ({ client }) => {
 }
 ```
 
-Levels: `debug`, `info`, `warn`, `error`. See [SDK documentation](https://opencode.ai/docs/sdk) for details.
+Levels: `debug`, `info`, `warn`, `error`. See [SDK documentation](https://opencode-manager.ai/docs/sdk) for details.
 
 ---
 
