@@ -48,14 +48,15 @@ jobs:
 
       - name: Package archives
         run: |
+          ROOT=$PWD
           mkdir -p artifacts
           cd packages/opencode/dist
           for dir in */; do
             name="${dir%/}"
             if echo "$name" | grep -qE "^(opencode-linux|opencode-darwin)"; then
-              tar czf "$OLDPWD/artifacts/${name}.tar.gz" -C "$dir/bin" .
+              tar czf "$ROOT/artifacts/${name}.tar.gz" -C "$dir/bin" .
             else
-              (cd "$dir/bin" && zip -r "$OLDPWD/artifacts/${name}.zip" .)
+              (cd "$dir/bin" && zip -r "$ROOT/artifacts/${name}.zip" .)
             fi
           done
 
