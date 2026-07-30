@@ -86,6 +86,11 @@ import * as TuiAudio from "./audio"
 import { win32DisableProcessedInput, win32FlushInputBuffer } from "./terminal-win32"
 import { destroyRenderer } from "./util/renderer"
 import { cliErrorMessage, errorFormat } from "./util/error"
+import path from "path"
+type SessionConfig = {
+  auto_restore?: "always" | "never" | "prompt" | "directory"
+  restore_last?: boolean
+}
 
 registerOpencodeSpinner()
 
@@ -498,15 +503,37 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     })
   })
 
+  const [restoringSessionTitle, setRestoringSessionTitle] = createSignal<string>()
+
   let continued = false
   createEffect(() => {
     // When using -c, session list is loaded in blocking phase, so we can navigate at "partial"
     if (continued || sync.status === "loading" || !args.continue) return
-    const match = sync.data.session
-      .toSorted((a, b) => b.time.updated - a.time.updated)
-      .find((x) => x.parentID === undefined)?.id
+
+    const sessionConfig = (sync.data.config as { session?: SessionConfig }).session
+
+    // Try persisted last session first if restore_last is enabled
+    let match: string | undefined
+    if (sessionConfig?.restore_last !== false) {
+      const projectID = project.data.project.id
+      if (projectID) {
+        const lastID = local.session.last(projectID)
+        if (lastID && sync.data.session.some((x) => x.id === lastID && x.parentID === undefined)) {
+          match = lastID
+        }
+      }
+    }
+
+    if (!match) {
+      match = sync.data.session
+        .toSorted((a, b) => b.time.updated - a.time.updated)
+        .find((x) => x.parentID === undefined)?.id
+    }
+
     if (match) {
       continued = true
+      const session = sync.session.get(match)
+      if (session) setRestoringSessionTitle(session.title)
       if (args.fork) {
         void sdk.client.session.fork({ sessionID: match }).then((result) => {
           if (result.data?.id) {
@@ -521,18 +548,74 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     }
   })
 
-  // Auto-restore: when no explicit session flags are given, restore the most recent
-  // root session for the current project directory once the session list has loaded.
+  // Auto-restore: restore the most recent root session for the current project
+  // once the session list has loaded. Behavior is controlled by the session
+  // config section: always, never, prompt (show picker), or directory (filter by cwd).
   let autoRestored = false
   createEffect(() => {
     if (autoRestored || sync.status !== "complete" || args.continue || args.sessionID) return
-    const match = sync.data.session
-      .toSorted((a, b) => b.time.updated - a.time.updated)
-      .find((x) => x.parentID === undefined)?.id
+    const sessionConfig = (sync.data.config as { session?: SessionConfig }).session
+    const mode = sessionConfig?.auto_restore ?? "always"
+
+    if (mode === "never") {
+      autoRestored = true
+      return
+    }
+
+    if (mode === "prompt") {
+      autoRestored = true
+      dialog.replace(() => <DialogSessionList />)
+      return
+    }
+
+    // For "always" and "directory" modes, find the best session to restore
+    const sessions = sync.data.session.toSorted((a, b) => b.time.updated - a.time.updated)
+
+    // Try persisted last session first if restore_last is enabled
+    let match: string | undefined
+    if (sessionConfig?.restore_last !== false) {
+      const projectID = project.data.project.id
+      if (projectID) {
+        const lastID = local.session.last(projectID)
+        if (lastID && sessions.some((x) => x.id === lastID && x.parentID === undefined)) {
+          match = lastID
+        }
+      }
+    }
+
+    if (!match) {
+      if (mode === "directory") {
+        // Filter by current directory
+        const currentPath = sync.path.worktree && sync.path.directory
+          ? path.relative(path.resolve(sync.path.worktree), sync.path.directory).replaceAll("\\", "/")
+          : undefined
+        if (currentPath) {
+          match = sessions.find((x) => x.parentID === undefined && x.path === currentPath)?.id
+        }
+      }
+      // Fall back to any root session
+      if (!match) {
+        match = sessions.find((x) => x.parentID === undefined)?.id
+      }
+    }
+
     if (match) {
       autoRestored = true
+      const session = sync.session.get(match)
+      if (session) setRestoringSessionTitle(session.title)
       route.navigate({ type: "session", sessionID: match })
     }
+  })
+
+  // Persist the current session ID when navigating to a real session
+  createEffect(() => {
+    if (route.data.type !== "session") return
+    const projectID = project.data.project.id
+    if (!projectID) return
+    // Only persist real sessions (route.data has the ID, sync confirms it exists)
+    const session = sync.session.get(route.data.sessionID)
+    if (!session) return
+    local.session.setLast(route.data.sessionID, projectID)
   })
 
   // Handle --session with --fork: wait for sync to be fully complete before forking
@@ -1141,7 +1224,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         <pluginRuntime.Slot name="app" />
       </Show>
       <Show when={!startup.skipInitialLoading}>
-        <StartupLoading ready={ready} />
+        <StartupLoading ready={ready} sessionTitle={restoringSessionTitle()} />
       </Show>
     </box>
   )

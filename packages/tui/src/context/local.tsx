@@ -412,9 +412,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const [sessionStore, setSessionStore] = createStore<{
         ready: boolean
         pinned: string[]
+        last: Record<string, string>
       }>({
         ready: false,
         pinned: [],
+        last: {},
       })
 
       const filePath = path.join(paths.state, "session.json")
@@ -430,18 +432,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         state.pending = false
         void writeJsonAtomic(filePath, {
           pinned: sessionStore.pinned,
+          last: sessionStore.last,
         })
       }
 
       readJson<unknown>(filePath)
         .then((x) => {
           if (!x || typeof x !== "object") return
-          const pinned = (x as Record<string, unknown>).pinned
+          const value = x as Record<string, unknown>
+          const pinned = value.pinned
           if (Array.isArray(pinned))
             setSessionStore(
               "pinned",
               pinned.filter((item): item is string => typeof item === "string"),
             )
+          if (typeof value.last === "object" && value.last !== null)
+            setSessionStore("last", value.last as Record<string, string>)
         })
         .catch(() => {})
         .finally(() => {
@@ -496,6 +502,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           if (!target) return
           if (route.data.type === "session" && route.data.sessionID === target) return
           route.navigate({ type: "session", sessionID: target })
+        },
+        setLast(sessionID: string, projectDir: string) {
+          setSessionStore("last", projectDir, sessionID)
+          save()
+        },
+        last(projectDir: string) {
+          return sessionStore.last[projectDir]
         },
       }
     }

@@ -27,7 +27,6 @@ import { useSDK } from "./sdk"
 import { useTuiStartup } from "./runtime"
 import { createSimpleContext } from "./helper"
 import { useExit } from "./exit"
-import { useArgs } from "./args"
 import { batch, onMount } from "solid-js"
 import path from "path"
 import { useKV } from "./kv"
@@ -440,7 +439,6 @@ export const {
     })
 
     const exit = useExit()
-    const args = useArgs()
 
     async function bootstrap(input: { fatal?: boolean } = {}) {
       const fatal = input.fatal ?? true
@@ -468,7 +466,6 @@ export const {
         agentsPromise,
         configPromise,
         projectPromise,
-        ...(args.continue ? [sessionListPromise] : []),
       ])
         .then(async () => {
           const providersResponse = providersPromise.then((x) => x.data!)
@@ -477,7 +474,6 @@ export const {
           const consoleStateResponse = consoleStatePromise
           const agentsResponse = agentsPromise.then((x) => x.data ?? [])
           const configResponse = configPromise.then((x) => x.data!)
-          const sessionListResponse = args.continue ? sessionListPromise : undefined
 
           return Promise.all([
             providersResponse,
@@ -486,7 +482,6 @@ export const {
             consoleStateResponse,
             agentsResponse,
             configResponse,
-            ...(sessionListResponse ? [sessionListResponse] : []),
           ]).then((responses) => {
             const providers = responses[0]
             const providerList = responses[1]
@@ -494,7 +489,6 @@ export const {
             const consoleState = responses[3]
             const agents = responses[4]
             const config = responses[5]
-            const sessions = responses[6]
 
             batch(() => {
               setStore("provider", reconcile(providers.providers))
@@ -504,7 +498,6 @@ export const {
               setStore("console_state", reconcile(consoleState))
               setStore("agent", reconcile(agents))
               setStore("config", reconcile(config))
-              if (sessions !== undefined) setStore("session", reconcile(sessions))
             })
           })
         })
@@ -512,7 +505,7 @@ export const {
           if (store.status !== "complete") setStore("status", "partial")
           // non-blocking
           void Promise.all([
-            ...(args.continue ? [] : [sessionListPromise.then((sessions) => setStore("session", reconcile(sessions)))]),
+            sessionListPromise.then((sessions) => setStore("session", reconcile(sessions))),
             consoleStatePromise.then((consoleState) => setStore("console_state", reconcile(consoleState))),
             sdk.client.command.list({ workspace }).then((x) => setStore("command", reconcile(x.data ?? []))),
             sdk.client.lsp.status({ workspace }).then((x) => setStore("lsp", reconcile(x.data ?? []))),

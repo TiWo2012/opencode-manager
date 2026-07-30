@@ -5,6 +5,7 @@ import { NonNegativeInt, PositiveInt, type DeepMutable } from "../../schema"
 import { ConfigExperimental } from "../../config/experimental"
 import { ConfigNtfy } from "../../config/ntfy"
 import { ConfigReference } from "../../config/reference"
+import { ConfigSession } from "../../config/session"
 import { ConfigAgentV1 } from "./agent"
 import { ConfigAttachmentV1 } from "./attachment"
 import { ConfigCommandV1 } from "./command"
@@ -191,6 +192,9 @@ export const Info = Schema.Struct({
       }),
     }),
   ),
+  session: Schema.optional(ConfigSession.Info).annotate({
+    description: "Session restore behavior on startup",
+  }),
 }).annotate({ identifier: "Config" })
 
 export type Info = DeepMutable<Schema.Schema.Type<typeof Info>>

@@ -22,6 +22,7 @@ import { ConfigNtfy } from "./config/ntfy"
 import { ConfigPlugin } from "./config/plugin"
 import { ConfigProvider } from "./config/provider"
 import { ConfigReference } from "./config/reference"
+import { ConfigSession } from "./config/session"
 import { ConfigToolOutput } from "./config/tool-output"
 import { ConfigWatcher } from "./config/watcher"
 import { ConfigV1 } from "./v1/config/config"
@@ -93,6 +94,9 @@ export class Info extends Schema.Class<Info>("Config.Info")({
   }),
   skills: Schema.String.pipe(Schema.Array, Schema.optional).annotate({
     description: "Additional paths or URLs to discover skills from",
+  }),
+  session: ConfigSession.Info.pipe(Schema.optional).annotate({
+    description: "Session restore behavior on startup",
   }),
   commands: Schema.Record(Schema.String, ConfigCommand.Info).pipe(Schema.optional).annotate({
     description: "Named slash command definitions",

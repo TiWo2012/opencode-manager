@@ -58,6 +58,7 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
         tokens: info.compaction.preserve_recent_tokens,
       },
       buffer: info.compaction.reserved,
+      tail_turns: info.compaction.tail_turns,
     },
     skills: info.skills && [...(info.skills.paths ?? []), ...(info.skills.urls ?? [])],
     commands: info.command,
@@ -67,6 +68,12 @@ export function migrate(info: typeof ConfigV1.Info.Type) {
       typeof plugin === "string" ? plugin : { package: plugin[0], options: plugin[1] },
     ),
     experimental: info.experimental?.policies && { policies: info.experimental.policies },
+    logLevel: info.logLevel,
+    server: info.server,
+    disabled_providers: info.disabled_providers,
+    enabled_providers: info.enabled_providers,
+    small_model: info.small_model,
+    subagent_depth: info.subagent_depth,
     providers: providers(info.provider),
   }
 }
