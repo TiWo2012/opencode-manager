@@ -25,6 +25,8 @@ import { containsPath, type InstanceContext } from "../project/instance-context"
 import { Config } from "@opencode-ai/core/config"
 import { ConfigMigrateV1 } from "@opencode-ai/core/v1/config/migrate"
 import { ConfigV1 } from "@opencode-ai/core/v1/config/config"
+import { ConfigPermissionV1 } from "@opencode-ai/core/v1/config/permission"
+import { ConfigPluginV1 } from "@opencode-ai/core/v1/config/plugin"
 import { RemoteAuthError } from "@opencode-ai/core/v1/config/error"
 import { ConfigAgent } from "./agent"
 import { ConfigCommand } from "./command"
@@ -38,13 +40,14 @@ import { withTransientReadRetry } from "@/util/effect-http-client"
 
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
-function mergeConfig(target: Info, source: Info): Info {
-  return mergeDeep(target, source) as Info
+// Uses RawConfig internally since V1-shape and V2-shape data coexist during loading.
+function mergeConfig(target: RawConfig, source: RawConfig): RawConfig {
+  return mergeDeep(target, source) as RawConfig
 }
 
-function mergeConfigConcatArrays(target: Info, source: Info): Info {
+function mergeConfigConcatArrays(target: RawConfig, source: RawConfig): RawConfig {
   const merged = mergeConfig(target, source)
-  if (target.instructions && source.instructions) {
+  if (Array.isArray(target.instructions) && Array.isArray(source.instructions)) {
     merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
   }
   return merged
@@ -98,15 +101,44 @@ async function substituteWellKnownRemoteConfig(input: {
   return { url, headers }
 }
 
-async function resolveLoadedPlugins(config: Info, filepath: string) {
-  if (!config.plugins) return config
-  for (let i = 0; i < config.plugins.length; i++) {
-    config.plugins[i] = await ConfigPlugin.resolvePluginSpec(config.plugins[i], filepath)
+async function resolveLoadedPlugins(config: RawConfig, filepath: string) {
+  const v1Plugins = Array.isArray(config.plugin) ? (config.plugin as ConfigPluginV1.Spec[]) : undefined
+  const v2Plugins = Array.isArray(config.plugins) ? (config.plugins as Array<string | { package: string; options?: Record<string, unknown> }>) : undefined
+
+  if (v1Plugins) {
+    for (let i = 0; i < v1Plugins.length; i++) {
+      v1Plugins[i] = await ConfigPlugin.resolvePluginSpec(v1Plugins[i], filepath)
+    }
   }
+
+  if (v2Plugins) {
+    for (let i = 0; i < v2Plugins.length; i++) {
+      const spec = v2Plugins[i]
+      if (typeof spec === "string") {
+        const resolved = await ConfigPlugin.resolvePluginSpec(spec, filepath)
+        v2Plugins[i] = Array.isArray(resolved) ? resolved[0] : resolved
+      } else if (typeof spec === "object" && spec) {
+        const resolved = await ConfigPlugin.resolvePluginSpec(spec.package, filepath)
+        const pkg = Array.isArray(resolved) ? resolved[0] : resolved
+        v2Plugins[i] = { ...spec, package: pkg }
+      }
+    }
+  }
+
   return config
 }
 
-export type Info = Config.Info & {
+// During the V1→V2 migration transition, keep V1 fields alongside V2 fields on the type
+// so existing consumers still compile. V1 is the base type (consumers expect V1 shapes);
+// V2-only fields are added as optional extras. Conflicting same-name fields keep V1's type.
+export type Info = ConfigV1.Info & {
+  // V2-only fields (no V1 equivalent) — loosely typed during transition
+  permissions?: unknown
+  agents?: Record<string, unknown>
+  snapshots?: boolean
+  commands?: Record<string, unknown>
+  plugins?: unknown
+  providers?: Record<string, unknown>
   // Fields preserved from V1 that are not yet part of the V2 schema
   logLevel?: "DEBUG" | "INFO" | "WARN" | "ERROR"
   server?: { port?: number; hostname?: string; mdns?: boolean; mdnsDomain?: string; cors?: string[] }
@@ -118,6 +150,9 @@ export type Info = Config.Info & {
   // with the file and scope it came from so later runtime code can make location-sensitive decisions.
   plugin_origins?: ConfigPlugin.Origin[]
 }
+
+// Internal type used during loading/merging where V1-shaped field names are still needed
+type RawConfig = Record<string, unknown>
 
 type State = {
   config: Info
@@ -216,6 +251,9 @@ const layer = Layer.effect(
       )
     })
 
+    const decodeOptions = { errors: "all", onExcessProperty: "ignore", propertyOrder: "original" } as const
+    const decodeV2Info = Schema.decodeUnknownOption(Config.Info, decodeOptions)
+
     const loadConfig = Effect.fnUntraced(function* (
       text: string,
       options: { path: string } | { dir: string; source: string },
@@ -246,7 +284,6 @@ const layer = Layer.effect(
       } else {
         data = ConfigParse.schema(Config.Info, normalized, source)
       }
-      if (!("path" in options)) return data
 
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
       if (!data.$schema) {
@@ -260,12 +297,12 @@ const layer = Layer.effect(
     const loadFile = Effect.fnUntraced(function* (filepath: string, env?: Record<string, string>) {
       yield* Effect.logInfo("loading", { path: filepath })
       const text = yield* readConfigFile(filepath)
-      if (!text) return {} as Info
+      if (!text) return {} as RawConfig
       return yield* loadConfig(text, { path: filepath }, env)
     })
 
     const loadGlobal = Effect.fnUntraced(function* (env?: Record<string, string>) {
-      let result: Info = {}
+      let result: RawConfig = {}
       // Seed the default global config with the schema for editor completion, but avoid writing when the user
       // explicitly routes config through env-provided paths or content.
       if (!Flag.OPENCODE_CONFIG && !Flag.OPENCODE_CONFIG_DIR && !Flag.OPENCODE_CONFIG_CONTENT) {
@@ -304,13 +341,44 @@ const layer = Layer.effect(
         Effect.tapError((error) =>
           Effect.logError("failed to load global config, using defaults", { error: String(error) }),
         ),
-        Effect.orElseSucceed((): Info => ({})),
+        Effect.orElseSucceed((): RawConfig => ({})),
       ),
       Duration.infinity,
     )
 
+    function migrateToV2(raw: RawConfig): Info {
+      const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
+      const v1 = "logLevel" in raw || "provider" in raw || "agent" in raw
+        ? Option.getOrUndefined(decodeV1Info(raw))
+        : undefined
+      // Produce V1 data (pre-migration raw decoded as V1)
+      const v1Part = (v1 ?? raw) as unknown as ConfigV1.Info
+      // Produce V2 data (via migration if V1, or direct decode if V2)
+      const rawV2 = v1 ? ConfigMigrateV1.migrate(v1) : raw
+      const v2Part = Option.getOrUndefined(decodeV2Info(rawV2)) ?? raw as unknown as Config.Info
+      return {
+        ...v1Part,
+        ...v2Part,
+        plugin_origins: (raw as any).plugin_origins,
+      } as Info
+    }
+
+    // Public getGlobal returns V2-typed config
     const getGlobal = Effect.fn("Config.getGlobal")(function* () {
-      return yield* cachedGlobal
+      const raw = yield* cachedGlobal
+      // Run migration on the fly since cachedGlobal stores raw V1 data for internal merging
+      const decodeV1Info = Schema.decodeUnknownOption(ConfigV1.Info, decodeOptions)
+      const rawV2 = ConfigMigrateV1.isV1(raw)
+        ? Option.getOrUndefined(
+            decodeV1Info(raw).pipe(Option.map(ConfigMigrateV1.migrate)),
+          ) ?? raw
+        : raw
+      const info = Option.getOrUndefined(decodeV2Info(rawV2)) ?? raw as unknown as Config.Info
+      return {
+        ...(raw as any),
+        ...info,
+        plugin_origins: (raw as any).plugin_origins,
+      } as Info
     })
 
     const ensureGitignore = Effect.fn("Config.ensureGitignore")(function* (dir: string) {
@@ -336,7 +404,7 @@ const layer = Layer.effect(
       function* (ctx: InstanceContext) {
         const auth = yield* authSvc.all().pipe(Effect.orDie)
 
-        let result: Info = {}
+        let result: Record<string, any> = {}
         const authEnv: Record<string, string> = {}
         const consoleManagedProviders = new Set<string>()
         let activeOrgName: string | undefined
@@ -355,17 +423,20 @@ const layer = Layer.effect(
         ) {
           if (!list?.length) return
           const hit = kind ?? (yield* pluginScopeForSource(source))
+          // Merge newly seen plugin origins with previously collected ones, then dedupe by plugin identity while
+          // keeping the winning source/scope metadata for downstream installs, writes, and diagnostics.
+          const existingOrigins = (result as RawConfig).plugin_origins as ConfigPlugin.Origin[] | undefined
           const plugins = ConfigPlugin.deduplicatePluginOrigins([
-            ...(result.plugin_origins ?? []),
+            ...(existingOrigins ?? []),
             ...list.map((spec) => ({ spec, source, scope: hit })),
           ])
-          result.plugins = plugins.map((item) => item.spec)
-          result.plugin_origins = plugins
+          ;(result as RawConfig).plugin = plugins.map((item) => item.spec)
+          ;(result as RawConfig).plugin_origins = plugins
         })
 
-        const merge = (source: string, next: Info, kind?: ConfigPlugin.Scope) => {
+        const merge = (source: string, next: RawConfig, kind?: ConfigPlugin.Scope) => {
           result = mergeConfigConcatArrays(result, next)
-          return mergePluginOrigins(source, next.plugins, kind)
+          return mergePluginOrigins(source, next.plugin as ConfigPluginV1.Spec[] | undefined, kind)
         }
 
         for (const [key, value] of Object.entries(auth)) {
@@ -410,7 +481,7 @@ const layer = Layer.effect(
           }
         }
 
-        const global = Object.keys(authEnv).length ? yield* loadGlobal(authEnv) : yield* getGlobal()
+        const global = Object.keys(authEnv).length ? yield* loadGlobal(authEnv) : (yield* cachedGlobal) as RawConfig
         yield* merge(Global.Path.config, global, "global")
 
         if (Flag.OPENCODE_CONFIG) {
@@ -509,7 +580,7 @@ const layer = Layer.effect(
                 dir: path.dirname(source),
                 source,
               })
-              for (const providerID of Object.keys(next.provider ?? {})) {
+              for (const providerID of Object.keys((next as RawConfig).provider ?? {})) {
                 consoleManagedProviders.add(providerID)
               }
               yield* merge(source, next, "global")
@@ -544,6 +615,15 @@ const layer = Layer.effect(
           )
         }
 
+        for (const [name, mode] of Object.entries(result.mode ?? {})) {
+          result.agent = mergeDeep(result.agent ?? {}, {
+            [name]: {
+              ...mode as Record<string, unknown>,
+              mode: "primary" as const,
+            },
+          })
+        }
+
         if (Flag.OPENCODE_PERMISSION) {
           try {
             result.permissions = mergeDeep(result.permissions ?? {}, JSON.parse(Flag.OPENCODE_PERMISSION))
@@ -562,18 +642,22 @@ const layer = Layer.effect(
         }
 
         if (result.autoshare === true && !result.share) {
-          result.share = "auto"
+          ;(result as RawConfig).share = "auto"
         }
 
         if (Flag.OPENCODE_DISABLE_AUTOCOMPACT) {
-          result.compaction = { ...result.compaction, auto: false }
+          const existing = (result as RawConfig).compaction as Record<string, unknown> | undefined
+          ;(result as RawConfig).compaction = { ...existing, auto: false }
         }
         if (Flag.OPENCODE_DISABLE_PRUNE) {
-          result.compaction = { ...result.compaction, prune: false }
+          const existing = (result as RawConfig).compaction as Record<string, unknown> | undefined
+          ;(result as RawConfig).compaction = { ...existing, prune: false }
         }
 
+        const config = migrateToV2(result)
+
         return {
-          config: result,
+          config,
           directories,
           deps,
           consoleState: {
@@ -615,7 +699,10 @@ const layer = Layer.effect(
       const file = path.join(dir, "config.json")
       const existing = yield* loadFile(file)
       yield* fs
-        .writeFileString(file, JSON.stringify(mergeDeep(writable(existing), writable(config)), null, 2))
+        .writeFileString(
+          file,
+          JSON.stringify(mergeDeep((existing as RawConfig) as Record<string, unknown>, writable(config)), null, 2),
+        )
         .pipe(Effect.orDie)
     })
 
@@ -637,15 +724,16 @@ const layer = Layer.effect(
       let next: Info
       let changed: boolean
       if (!file.endsWith(".jsonc")) {
-        const existing = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(before, file), file)
-        const merged = mergeDeep(writable(existing), patch)
+        const existing = ConfigParse.jsonc(before, file)
+        const merged = mergeDeep(existing as Record<string, unknown>, patch as unknown as Record<string, unknown>)
         const serialized = JSON.stringify(merged, null, 2)
         changed = serialized !== before
         if (changed) yield* fs.writeFileString(file, serialized).pipe(Effect.orDie)
-        next = merged
+        next = merged as unknown as Info
       } else {
         const updated = patchJsonc(before, patch)
-        next = ConfigParse.schema(ConfigV1.Info, ConfigParse.jsonc(updated, file), file)
+        const parsed = ConfigParse.jsonc(updated, file)
+        next = migrateToV2(parsed as RawConfig)
         changed = updated !== before
         if (changed) yield* fs.writeFileString(file, updated).pipe(Effect.orDie)
       }
