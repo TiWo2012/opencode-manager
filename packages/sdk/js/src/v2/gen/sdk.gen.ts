@@ -5752,7 +5752,7 @@ export class Session3 extends HeyApiClient {
   public events<ThrowOnError extends boolean = false>(
     parameters: {
       sessionID: string
-      after?: string
+      after?: number
     },
     options?: Options<never, ThrowOnError>,
   ) {

@@ -11873,7 +11873,7 @@ export type V2SessionEventsData = {
     sessionID: string
   }
   query?: {
-    after?: string
+    after?: number
   }
   url: "/api/session/{sessionID}/event"
 }
