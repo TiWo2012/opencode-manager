@@ -4,6 +4,7 @@ import path from "path"
 import { ToolFailure } from "@opencode-ai/llm"
 import { Duration, Effect, Layer, Schema } from "effect"
 import { ChildProcess } from "effect/unstable/process"
+import { BackgroundJob } from "../background-job"
 import { Config } from "../config"
 import { makeLocationNode } from "../effect/app-node"
 import { FSUtil } from "../fs-util"
@@ -30,6 +31,10 @@ export const Input = Schema.Struct({
     .annotate({
       description: `Timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS} and may not exceed ${MAX_TIMEOUT_MS}.`,
     }),
+  background: Schema.Boolean.pipe(Schema.optional).annotate({
+    description:
+      "Run the command in the background. Returns immediately; the result will be delivered to the session when it completes.",
+  }),
 })
 
 const StructuredOutput = Schema.Struct({
@@ -102,6 +107,7 @@ const layer = Layer.effectDiscard(
     const appProcess = yield* AppProcess.Service
     const config = yield* Config.Service
     const permission = yield* PermissionV2.Service
+    const background = yield* BackgroundJob.Service
 
     yield* tools
       .register({
@@ -163,34 +169,50 @@ const layer = Layer.effectDiscard(
                 forceKillAfter: Duration.seconds(3),
               })
               const timeout = input.timeout ?? DEFAULT_TIMEOUT_MS
-              const result = yield* appProcess
-                .run(command, {
-                  combineOutput: true,
-                  timeout: Duration.millis(timeout),
-                  maxOutputBytes: MAX_CAPTURE_BYTES,
+
+              const runProcess = Effect.fn("BashTool.runProcess")(function* () {
+                const result = yield* appProcess
+                  .run(command, {
+                    combineOutput: true,
+                    timeout: Duration.millis(timeout),
+                    maxOutputBytes: MAX_CAPTURE_BYTES,
+                  })
+                  .pipe(
+                    Effect.catchTag("AppProcessError", (error) =>
+                      isTimeout(error) ? Effect.succeed(undefined) : Effect.fail(error),
+                    ),
+                  )
+                if (!result) {
+                  return `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`
+                }
+                const output = result.output?.toString("utf8") || "(no output)"
+                const notice = result.outputTruncated
+                  ? "[output capture truncated at the in-memory safety limit]"
+                  : undefined
+                return notice ? `${output}\n\n${notice}` : output
+              })
+
+              if (input.background) {
+                const info = yield* background.start({
+                  type: name,
+                  title: input.command.slice(0, 200),
+                  metadata: { sessionId: context.sessionID, background: true, command: input.command },
+                  sessionID: context.sessionID,
+                  run: runProcess,
                 })
-                .pipe(
-                  Effect.catchTag("AppProcessError", (error) =>
-                    isTimeout(error) ? Effect.succeed(undefined) : Effect.fail(error),
-                  ),
-                )
-              if (!result) {
                 return {
-                  output: `Command exceeded timeout of ${timeout} ms. Retry with a larger timeout if the command is expected to take longer.`,
+                  exit: undefined,
+                  output: `Command running in background (job ${info.id}). You will be notified when it completes.`,
                   truncated: false,
-                  timeout: true,
                   ...(warnings.length ? { warnings } : {}),
                 }
               }
 
-              const output = result.output?.toString("utf8") || "(no output)"
-              const notice = result.outputTruncated
-                ? "[output capture truncated at the in-memory safety limit]"
-                : undefined
+              const output = yield* runProcess
               return {
-                exit: result.exitCode,
-                output: notice ? `${output}\n\n${notice}` : output,
-                truncated: result.outputTruncated === true,
+                exit: undefined,
+                output,
+                truncated: false,
                 ...(warnings.length ? { warnings } : {}),
               }
             }).pipe(Effect.mapError(() => new ToolFailure({ message: `Unable to execute command: ${input.command}` }))),

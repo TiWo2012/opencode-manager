@@ -15,6 +15,7 @@ export type Info = {
   completed_at?: number
   output?: string
   error?: string
+  sessionID?: string
   metadata?: Record<string, unknown>
 }
 
@@ -29,6 +30,8 @@ type Active = {
   tail: Deferred.Deferred<void>
   promoted: Deferred.Deferred<Info>
   onPromote?: Effect.Effect<void>
+  onSettle?: Effect.Effect<void>
+  sessionID?: string
 }
 
 type State = {
@@ -40,6 +43,7 @@ type FinishResult = {
   info?: Info
   done?: Deferred.Deferred<Info>
   scope?: Scope.Closeable
+  onSettle?: Effect.Effect<void>
 }
 
 type PromoteResult = {
@@ -67,7 +71,9 @@ export type StartInput = {
   title?: string
   metadata?: Record<string, unknown>
   onPromote?: Effect.Effect<void>
+  onSettle?: Effect.Effect<void>
   run: Effect.Effect<string, unknown>
+  sessionID?: string
 }
 
 export type ExtendInput = {
@@ -151,6 +157,7 @@ export const make = Effect.gen(function* () {
       const next = {
         ...job,
         onPromote: undefined,
+        onSettle: undefined,
         pending: 0,
         output,
         info: {
@@ -161,9 +168,12 @@ export const make = Effect.gen(function* () {
           ...(Exit.isFailure(exit) ? { error: errorText(Cause.squash(exit.cause)) } : {}),
         },
       }
-      return [{ info: snapshot(next), done: job.done, scope: job.scope }, new Map(jobs).set(id, next)]
+      return [{ info: snapshot(next), done: job.done, scope: job.scope, onSettle: job.onSettle }, new Map(jobs).set(id, next)]
     })
     if (result.info && result.done) yield* Deferred.succeed(result.done, result.info).pipe(Effect.ignore)
+    if (result.onSettle) {
+      yield* result.onSettle.pipe(Effect.forkIn(state.scope, { startImmediately: true }))
+    }
     if (result.scope) {
       yield* Scope.close(result.scope, Exit.void).pipe(Effect.forkIn(state.scope, { startImmediately: true }))
     }
@@ -223,6 +233,7 @@ export const make = Effect.gen(function* () {
                 title: input.title,
                 status: "running" as const,
                 started_at,
+                sessionID: input.sessionID,
                 metadata: input.metadata,
               },
               done,
@@ -233,6 +244,8 @@ export const make = Effect.gen(function* () {
               tail,
               promoted,
               onPromote: input.onPromote,
+              onSettle: input.onSettle,
+              sessionID: input.sessionID,
             }
             return [{ info: snapshot(job), scope, token }, new Map(jobs).set(id, job)] as readonly [
               StartResult,
@@ -343,6 +356,7 @@ export const make = Effect.gen(function* () {
       const next = {
         ...job,
         onPromote: undefined,
+        onSettle: undefined,
         pending: 0,
         info: {
           ...job.info,
@@ -350,9 +364,12 @@ export const make = Effect.gen(function* () {
           completed_at,
         },
       }
-      return [{ info: snapshot(next), done: job.done, scope: job.scope }, new Map(jobs).set(id, next)]
+      return [{ info: snapshot(next), done: job.done, scope: job.scope, onSettle: job.onSettle }, new Map(jobs).set(id, next)]
     })
     if (result.info && result.done) yield* Deferred.succeed(result.done, result.info).pipe(Effect.ignore)
+    if (result.onSettle) {
+      yield* result.onSettle.pipe(Effect.forkIn(state.scope, { startImmediately: true }))
+    }
     if (result.scope) yield* Scope.close(result.scope, Exit.void)
     return result.info
   })
