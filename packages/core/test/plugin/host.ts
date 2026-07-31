@@ -37,6 +37,14 @@ export function host(overrides: Overrides = {}): PluginContext {
         resolve: () => Effect.die("unused integration.connection.resolve"),
       },
     },
+    modelDatabase: {
+      registerProvider:
+        overrides.modelDatabase?.registerProvider ?? (() => Effect.die("unused modelDatabase.registerProvider")),
+      registerModel: overrides.modelDatabase?.registerModel ?? (() => Effect.die("unused modelDatabase.registerModel")),
+      removeProvider:
+        overrides.modelDatabase?.removeProvider ?? (() => Effect.die("unused modelDatabase.removeProvider")),
+      removeModel: overrides.modelDatabase?.removeModel ?? (() => Effect.die("unused modelDatabase.removeModel")),
+    },
     plugin: overrides.plugin ?? {
       add: () => Effect.die("unused plugin.add"),
       remove: () => Effect.die("unused plugin.remove"),

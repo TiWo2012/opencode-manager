@@ -11,6 +11,7 @@ import { FileSystem } from "@opencode-ai/core/filesystem"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Integration } from "@opencode-ai/core/integration"
 import { Location } from "@opencode-ai/core/location"
+import { ModelDatabase } from "@opencode-ai/core/model-database"
 import { Npm } from "@opencode-ai/core/npm"
 import { PluginV2 } from "@opencode-ai/core/plugin"
 import { Reference } from "@opencode-ai/core/reference"
@@ -42,6 +43,7 @@ export const PluginTestLayer = AppNodeBuilder.build(
     Catalog.node,
     CommandV2.node,
     Integration.node,
+    ModelDatabase.node,
     Reference.node,
     SkillV2.node,
   ]),
