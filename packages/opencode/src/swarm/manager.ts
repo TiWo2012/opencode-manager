@@ -6,6 +6,7 @@ import { AppProcess } from "@opencode-ai/core/process"
 import { BackgroundJob } from "@/background/job"
 import { Session } from "@/session/session"
 import { SessionPrompt } from "@/session/prompt"
+import { SessionStatus } from "@/session/status"
 import { SessionID } from "@/session/schema"
 import { Worktree } from "@/worktree"
 import { Git } from "@/git"
@@ -29,6 +30,9 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
  */
 
 export { Service, type Error, type Interface, SwarmConflict, SwarmNotFound } from "./service"
+
+/** Maximum swarm agents running concurrently (resource limit). */
+const MAX_CONCURRENT = 3
 
 // ---- runtime state -------------------------------------------------------
 
@@ -79,6 +83,7 @@ const layer = Layer.effect(
     const scope = yield* Scope.Scope
     const sessions = yield* Session.Service
     const prompt = yield* SessionPrompt.Service
+    const status = yield* SessionStatus.Service
     const background = yield* BackgroundJob.Service
     const worktree = yield* Worktree.Service
     const gitSvc = yield* Git.Service
@@ -144,6 +149,33 @@ const layer = Layer.effect(
       return rt.info.agents.find((item) => item.id === agentID)
     })
 
+    /**
+     * Map a swarm agent status onto the session status union so agent sessions
+     * surface orchestration state (waiting, blocked, review, merging, queued).
+     */
+    function sessionStatusFor(agentStatus: Swarm.AgentStatus, reason?: string) {
+      switch (agentStatus) {
+        case "queued":
+          return { type: "queued" as const }
+        case "waiting":
+          return { type: "waiting" as const, reason: reason ?? "waiting for dependencies" }
+        case "blocked":
+          return { type: "blocked" as const, reason: reason ?? "blocked" }
+        case "awaiting-review":
+          return { type: "review" as const }
+        case "merging":
+          return { type: "merging" as const }
+        case "completed":
+        case "failed":
+        case "cancelled":
+          return { type: "idle" as const }
+        case "working":
+        case "planning":
+        case "merged":
+          return undefined
+      }
+    }
+
     const setAgentStatus = Effect.fn("Swarm.setAgentStatus")(function* (
       swarmID: Swarm.ID,
       agentID: string,
@@ -162,6 +194,10 @@ const layer = Layer.effect(
       const agent = updated.value
       if (options.event !== false) {
         yield* events.publish(SwarmEvent.AgentStatus, { swarmID, agent }).pipe(Effect.ignore)
+      }
+      const mapped = sessionStatusFor(agent.status, agent.error)
+      if (mapped && agent.sessionID) {
+        yield* status.set(agent.sessionID, mapped).pipe(Effect.ignore)
       }
       const info = yield* get(swarmID)
       yield* publishUpdated(info)
@@ -541,6 +577,13 @@ const layer = Layer.effect(
           ...{ directory: wt.directory },
         })
 
+        yield* modifyRuntime(swarmID, (rt2) => {
+          const info2 = cloneInfo(rt2.info)
+          const item = info2.agents.find((entry) => entry.id === agentID)
+          if (item) item.sessionID = session.id
+          return [undefined, { ...rt2, info: info2 }]
+        })
+
         const run = agentLoop({
           swarmID,
           agentID,
@@ -630,7 +673,9 @@ const layer = Layer.effect(
             if (!rt || rt.info.status !== "running") return Effect.succeed([undefined, map])
             const info = cloneInfo(rt.info)
             const launched: string[] = []
-            for (const id of Graph.ready(info.agents)) {
+            const busy = info.agents.filter((agent) => agent.status === "working" || agent.status === "merging").length
+            const slots = Math.max(0, MAX_CONCURRENT - busy)
+            for (const id of Graph.ready(info.agents).slice(0, slots)) {
               const agent = info.agents.find((item) => item.id === id)
               if (!agent) continue
               agent.status = "working"
@@ -950,6 +995,7 @@ export const node = LayerNode.make({
     BackgroundJob.node,
     Session.node,
     SessionPrompt.node,
+    SessionStatus.node,
     Worktree.node,
     Git.node,
     EventV2Bridge.node,

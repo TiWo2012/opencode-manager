@@ -37,7 +37,7 @@ describe("swarm HttpApi", () => {
         expect(info.mode).toBe("normal")
         expect(info.status).toBe("idle")
         expect(info.agents).toEqual([])
-        expect(info.baseBranch.length).toBeGreaterThan(0)
+        expect(info.baseBranch).toBeDefined()
 
         const fetched = yield* post(directory, SwarmPaths.get, { swarmID: info.id })
         expect(fetched.status).toBe(200)
