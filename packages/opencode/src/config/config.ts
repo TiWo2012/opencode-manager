@@ -272,6 +272,9 @@ const layer = Layer.effect(
       let data: Info
       if (ConfigMigrateV1.isV1(normalized)) {
         const v1Data = ConfigParse.schema(ConfigV1.Info, normalized, source)
+        // During the V1→V2 transition the migrated shape uses V2 field names, but `Info` keeps
+        // V1 as its base type for existing consumers; the migration output is honest V2 data
+        // carried in a V1-typed container until consumers migrate.
         data = {
           ...ConfigMigrateV1.migrate(v1Data),
           disabled_providers: v1Data.disabled_providers,
@@ -280,16 +283,22 @@ const layer = Layer.effect(
           subagent_depth: v1Data.subagent_depth,
           logLevel: v1Data.logLevel,
           server: v1Data.server,
-        }
+        } as unknown as Info
       } else {
-        data = ConfigParse.schema(Config.Info, normalized, source)
+        data = ConfigParse.schema(Config.Info, normalized, source) as unknown as Info
       }
 
-      yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
+      // Virtual configs have no file path to resolve relative plugin specs against or to persist into,
+      // so plugin resolution and the $schema backfill write are only meaningful for file-based configs.
+      if ("path" in options) {
+        yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
+      }
       if (!data.$schema) {
         data.$schema = "https://opencode.ai/config.json"
         const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
-        yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
+        if ("path" in options) {
+          yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
+        }
       }
       return data
     })
@@ -418,7 +427,7 @@ const layer = Layer.effect(
 
         const mergePluginOrigins = Effect.fnUntraced(function* (
           source: string,
-          list: ConfigPlugin.Plugin[] | undefined,
+          list: ConfigPluginV1.Spec[] | undefined,
           kind?: ConfigPlugin.Scope,
         ) {
           if (!list?.length) return

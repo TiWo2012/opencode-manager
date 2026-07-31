@@ -2,7 +2,7 @@ export * as ConfigWatcher from "./watcher"
 
 import { Config } from "./config"
 import { ConfigReconfigurable } from "./reconfigurable"
-import { Context, Effect, PubSub, Stream } from "effect"
+import { Context, Effect, Layer, PubSub, Stream } from "effect"
 import fs from "fs"
 import path from "path"
 import { Global } from "@opencode-ai/core/global"
@@ -78,7 +78,7 @@ function computeChanges(
   return changes
 }
 
-export const layer = Context.Service.layer(
+export const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const config = yield* Config.Service
@@ -121,7 +121,7 @@ export const layer = Context.Service.layer(
     const scheduleHandle = Effect.fnUntraced(function* () {
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
-        Effect.runFork(handleChange.pipe(Effect.catch((err) => Effect.logError("config change handler failed", { error: String(err) }))))
+        Effect.runFork(handleChange().pipe(Effect.catch((err) => Effect.logError("config change handler failed", { error: String(err) }))))
       }, 300)
     })
 
@@ -150,17 +150,10 @@ export const layer = Context.Service.layer(
       for (const filepath of watchedPaths) {
         if (!fs.existsSync(filepath)) continue
         const unwatch = yield* watchConfigFile(filepath, () => {
-          Effect.runFork(scheduleHandle)
+          Effect.runFork(scheduleHandle())
         })
         subscriptions.push(unwatch)
       }
-
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          for (const unwatch of subscriptions) unwatch()
-          if (debounceTimer) clearTimeout(debounceTimer)
-        }),
-      )
     })
 
     const stop = Effect.fnUntraced(function* () {
@@ -171,9 +164,14 @@ export const layer = Context.Service.layer(
       started = false
     })
 
-    const subscribe = Effect.fnUntraced(function* () {
-      return Stream.fromPubSub(events)
-    })
+    const subscribe = () => Stream.fromPubSub(events)
+
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        for (const unwatch of subscriptions) unwatch()
+        if (debounceTimer) clearTimeout(debounceTimer)
+      }),
+    )
 
     return Service.of({ subscribe, start, stop })
   }),

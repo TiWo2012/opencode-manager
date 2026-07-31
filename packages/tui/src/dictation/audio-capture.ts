@@ -28,7 +28,7 @@ class DecibriAudioCapture implements AudioCapture {
       device: resolveDevice(this.device),
     })
 
-    this.webStream = Readable.toWeb(this.microphone) as unknown as ReadableStream<Uint8Array>
+    this.webStream = Readable.toWeb(this.microphone as unknown as Readable) as unknown as ReadableStream<Uint8Array>
   }
 
   stop(): void {

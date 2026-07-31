@@ -1,6 +1,6 @@
 export * as ConfigReconfigurable from "./reconfigurable"
 
-import { Context, Effect } from "effect"
+import { Context, Effect, Layer } from "effect"
 import type { Config } from "./config"
 
 export interface Reconfigurable {
@@ -18,7 +18,7 @@ export interface Interface {
   readonly reconfigure: (changedKeys: readonly string[], config: Config.Info) => Effect.Effect<void>
 }
 
-export const layer = Context.Service.layer(
+export const layer = Layer.effect(
   Registry,
   Effect.gen(function* () {
     const items = new Map<string, Reconfigurable>()
@@ -31,7 +31,7 @@ export const layer = Context.Service.layer(
       items.delete(id)
     })
 
-    const entries = Effect.sync(() => Array.from(items.values()))
+    const entries = () => Effect.sync(() => Array.from(items.values()))
 
     const reconfigure = Effect.fnUntraced(function* (changedKeys: readonly string[], config: Config.Info) {
       yield* Effect.forEach(
