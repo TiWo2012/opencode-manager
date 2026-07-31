@@ -10,6 +10,7 @@ import SidebarSubagents from "./sidebar/subagents"
 import SidebarTodo from "./sidebar/todo"
 import DiffViewer from "./system/diff-viewer"
 import Notifications from "./system/notifications"
+import SwarmNotifications from "./system/swarm-notifications"
 import PluginManager from "./system/plugins"
 import WhichKey from "./system/which-key"
 
@@ -31,6 +32,7 @@ export function createBuiltinPlugins(options: { experimentalEventSystem: boolean
     SidebarFiles,
     SidebarFooter,
     Notifications,
+    SwarmNotifications,
     PluginManager,
     WhichKey,
     DiffViewer,
