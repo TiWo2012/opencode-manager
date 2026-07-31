@@ -225,6 +225,7 @@ export const Definitions = {
   tips_toggle: keybind("<leader>h", "Toggle tips on home screen"),
   plugin_manager: keybind("none", "Open plugin manager dialog"),
   plugin_install: keybind("none", "Install plugin"),
+  dictation_toggle: keybind("meta+shift+m", "Toggle voice dictation"),
 
   which_key_toggle: keybind("ctrl+alt+k", "Toggle which-key panel"),
   which_key_layout_toggle: keybind("ctrl+alt+shift+k", "Switch which-key layout"),
@@ -417,6 +418,7 @@ export const CommandMap = {
   which_key_page_down: "which-key.page.down",
   which_key_home: "which-key.home",
   which_key_end: "which-key.end",
+  dictation_toggle: "dictation.toggle",
 } satisfies BindingCommandMap
 const CommandDescriptions = Object.fromEntries(
   Object.entries(Definitions).map(([name, item]) => [

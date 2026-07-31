@@ -4,6 +4,31 @@ import { createBindingLookup } from "@opentui/keymap/extras"
 import { Schema } from "effect"
 import { createContext, type JSX, useContext } from "solid-js"
 import { TuiKeybind } from "./keybind"
+import { DictationConfigSchema, resolveDictationConfig } from "./dictation"
+export type ResolvedDictationConfig = import("./dictation").ResolvedDictationConfig
+
+export const Dictation = Schema.Struct({
+  enabled: Schema.optional(Schema.Boolean),
+  model: Schema.optional(Schema.Literals(["tiny", "base", "small", "medium"])),
+  audioDevice: Schema.optional(Schema.String),
+  cleanup: Schema.optional(
+    Schema.Struct({
+      removeFillers: Schema.Boolean,
+      fillers: Schema.Array(Schema.String),
+      capitalize: Schema.Boolean,
+      punctuation: Schema.Boolean,
+      disfluencyCleanup: Schema.Boolean,
+    }),
+  ),
+}).annotate({ description: "Voice dictation settings" })
+
+const PromptSize = Schema.Int.check(Schema.isGreaterThan(0))
+export const Prompt = Schema.Struct({
+  max_height: Schema.optional(PromptSize).annotate({ description: "Prompt textarea max height" }),
+  max_width: Schema.optional(Schema.Union([PromptSize, Schema.Literal("auto")])).annotate({
+    description: "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width",
+  }),
+}).annotate({ description: "Prompt size settings" })
 
 export const AttentionSoundName = Schema.Literals([
   "default",
@@ -42,14 +67,6 @@ export const Attention = Schema.Struct({
   sounds: Schema.optional(AttentionSounds),
 }).annotate({ description: "Attention notification and sound settings" })
 
-const PromptSize = Schema.Int.check(Schema.isGreaterThan(0))
-export const Prompt = Schema.Struct({
-  max_height: Schema.optional(PromptSize).annotate({ description: "Prompt textarea max height" }),
-  max_width: Schema.optional(Schema.Union([PromptSize, Schema.Literal("auto")])).annotate({
-    description: "Home prompt max width: a positive integer for a fixed cap, or 'auto' to scale with terminal width",
-  }),
-}).annotate({ description: "Prompt size settings" })
-
 export const Info = Schema.Struct({
   $schema: Schema.optional(Schema.String),
   theme: Schema.optional(Schema.String),
@@ -63,10 +80,11 @@ export const Info = Schema.Struct({
   scroll_acceleration: Schema.optional(ScrollAcceleration),
   diff_style: Schema.optional(DiffStyle),
   mouse: Schema.optional(Schema.Boolean).annotate({ description: "Enable or disable mouse capture (default: true)" }),
+  dictation: Schema.optional(Dictation),
 })
 export type Info = Schema.Schema.Type<typeof Info>
 
-export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse"> & {
+export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | "mouse" | "dictation"> & {
   attention: {
     enabled: boolean
     notifications: boolean
@@ -78,6 +96,7 @@ export type Resolved = Omit<Info, "attention" | "keybinds" | "leader_timeout" | 
   keybinds: TuiKeybind.BindingLookupView
   leader_timeout: number
   mouse: boolean
+  dictation: ResolvedDictationConfig
 }
 
 export const ResolveOptions = Schema.Struct({
@@ -113,6 +132,7 @@ export function resolve(input: Info, options: ResolveOptions): Resolved {
     }),
     leader_timeout: input.leader_timeout ?? LeaderTimeoutDefault,
     mouse: input.mouse ?? true,
+    dictation: resolveDictationConfig(input.dictation ?? {}),
   }
 }
 

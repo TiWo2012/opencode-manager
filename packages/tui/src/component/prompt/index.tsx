@@ -46,6 +46,7 @@ import { useDialog } from "../../ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
+import { createDictationManager, defaultDictationConfig, type DictationStatus } from "../../dictation"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
@@ -212,6 +213,9 @@ export function Prompt(props: PromptProps) {
   const [cursorVersion, setCursorVersion] = createSignal(0)
   const currentProviderLabel = createMemo(() => local.model.parsed().provider)
   const hasRightContent = createMemo(() => Boolean(props.right))
+  const [dictationStatus, setDictationStatus] = createSignal<DictationStatus>("idle")
+  const [interimText, setInterimText] = createSignal<string>()
+  let dictationManager: ReturnType<typeof createDictationManager> | undefined
 
   function promptModelWarning() {
     toast.show({
@@ -621,9 +625,42 @@ export function Prompt(props: PromptProps) {
       restoreExtmarksFromParts(saved.prompt.parts)
       input.cursorOffset = saved.cursor
     }
+
+    dictationManager = createDictationManager({
+      config: defaultDictationConfig,
+      onText: (text) => {
+        if (!input || input.isDestroyed) return
+        const current = input.plainText
+        const pos = current.length
+        input.insertText(text)
+        setTimeout(() => {
+          if (!input || input.isDestroyed) return
+          input.cursorOffset = pos + Bun.stringWidth(text)
+          input.getLayoutNode().markDirty()
+          renderer.requestRender()
+        }, 0)
+        setInterimText(undefined)
+      },
+      onStatusChange: (status) => {
+        setDictationStatus(status)
+        if (status === "error") {
+          void toast.show({
+            variant: "error",
+            message: dictationManager?.errorMessage ?? "Dictation error",
+            duration: 5000,
+          })
+        }
+      },
+      onInterimResult: (text) => {
+        setInterimText(text)
+      },
+    })
   })
 
   onCleanup(() => {
+    if (dictationManager && dictationManager.status === "listening") {
+      dictationManager.stop()
+    }
     if (store.prompt.input) {
       stashed = { prompt: unwrap(store.prompt), cursor: input.cursorOffset }
     }
@@ -1268,6 +1305,26 @@ export function Prompt(props: PromptProps) {
     return
   }
 
+  async function toggleDictation() {
+    if (!dictationManager) return
+    if (dictationManager.status === "listening") {
+      await dictationManager.stop()
+      setInterimText(undefined)
+    } else {
+      try {
+        await dictationManager.start()
+      } catch (error) {
+        toast.show({
+          variant: "error",
+          message: (error as Error).message,
+          duration: 5000,
+        })
+      }
+    }
+  }
+
+  const showDictation = createMemo(() => defaultDictationConfig.enabled)
+
   function clearPrompt() {
     if (store.prompt.input.trim().length >= DRAFT_RETENTION_MIN_CHARS || store.prompt.parts.length > 0) {
       history.append({
@@ -1438,6 +1495,13 @@ export function Prompt(props: PromptProps) {
               cursorColor={props.disabled ? theme.backgroundElement : theme.text}
               syntaxStyle={syntax()}
             />
+              <Show when={interimText()}>
+                <box paddingTop={1} paddingLeft={2} flexDirection="row">
+                  <text fg={theme.textMuted}>
+                    {interimText()}
+                  </text>
+                </box>
+              </Show>
             <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between">
               <box flexDirection="row" gap={1}>
                 <Show when={local.agent.current()} fallback={<box height={1} />}>
@@ -1476,6 +1540,32 @@ export function Prompt(props: PromptProps) {
               <Show when={hasRightContent()}>
                 <box flexDirection="row" gap={1} alignItems="center">
                   {props.right}
+                </box>
+              </Show>
+              <Show when={showDictation()}>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  alignItems="center"
+                  onMouseUp={() => toggleDictation()}
+                  opacity={dictationStatus() === "listening" ? 1 : 0.7}
+                >
+                  <text
+                    fg={
+                      dictationStatus() === "listening"
+                        ? theme.primary
+                        : dictationStatus() === "error"
+                          ? theme.error
+                          : theme.textMuted
+                    }
+                  >
+                    {dictationStatus() === "listening" ? "[●]" : "[○]"}
+                  </text>
+                  <Show when={dictationStatus() !== "idle" && dictationStatus() !== "listening"}>
+                    <text fg={theme.textMuted}>
+                      {dictationStatus() === "processing" ? "Processing..." : "Error"}
+                    </text>
+                  </Show>
                 </box>
               </Show>
             </box>
