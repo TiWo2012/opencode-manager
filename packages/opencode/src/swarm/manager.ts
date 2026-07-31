@@ -374,6 +374,11 @@ const layer = Layer.effect(
         const automatic = autoApprove._tag === "Some" && autoApprove.value
         if (automatic) {
           yield* events.publish(SwarmEvent.PlanApproved, { swarmID, automatic: true }).pipe(Effect.ignore)
+          // YOLO: the plan is auto-approved AND starts executing immediately —
+          // no human approval or start click needed.
+          yield* start(swarmID).pipe(
+            Effect.catch((error) => Effect.logError("yolo auto-start failed", { swarmID, error: error.message })),
+          )
         } else {
           // The plan needs human approval: normal mode always, and yolo mode when
           // the policy demands it (score 10 must never be silently bypassed).

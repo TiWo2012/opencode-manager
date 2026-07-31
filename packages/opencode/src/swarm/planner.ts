@@ -236,7 +236,12 @@ export const runPlanner = Effect.fn("SwarmPlanner.run")(function* (input: { titl
   })
 
   const text = finalText(result)
-  return parsePlan(text, assessedAt) ?? fallbackPlan(input.task, assessedAt)
+  const parsed = parsePlan(text, assessedAt)
+  if (parsed) return parsed
+  yield* Effect.logWarning("swarm planner output did not parse into a plan; using fallback", {
+    output: text.slice(0, 1000),
+  })
+  return fallbackPlan(input.task, assessedAt)
 })
 
 export * as SwarmPlanner from "./planner"
