@@ -198,7 +198,7 @@ const layer = Layer.effectDiscard(
                   title: input.command.slice(0, 200),
                   metadata: { sessionId: context.sessionID, background: true, command: input.command },
                   sessionID: context.sessionID,
-                  run: runProcess,
+                  run: runProcess(),
                 })
                 return {
                   exit: undefined,
@@ -208,7 +208,7 @@ const layer = Layer.effectDiscard(
                 }
               }
 
-              const output = yield* runProcess
+              const output = yield* runProcess()
               return {
                 exit: undefined,
                 output,
@@ -225,5 +225,5 @@ const layer = Layer.effectDiscard(
 export const node = makeLocationNode({
   name: "tool/bash",
   layer,
-  deps: [ToolRegistry.node, LocationMutation.node, FSUtil.node, AppProcess.node, Config.node, PermissionV2.node],
+  deps: [ToolRegistry.node, LocationMutation.node, FSUtil.node, AppProcess.node, Config.node, PermissionV2.node, BackgroundJob.node],
 })
