@@ -51,6 +51,7 @@
     "@huggingface/transformers": "4.2.0",
     "@opencode-ai/core": "workspace:*",
     "@opencode-ai/plugin": "workspace:*",
+    "@opencode-ai/schema": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",
     "@opencode-ai/ui": "workspace:*",
     "decibri": "5.2.5",
