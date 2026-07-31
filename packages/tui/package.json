@@ -48,10 +48,12 @@
     "./component/register-spinner": "./src/component/register-spinner.ts"
   },
   "dependencies": {
+    "@huggingface/transformers": "4.2.0",
     "@opencode-ai/core": "workspace:*",
     "@opencode-ai/plugin": "workspace:*",
     "@opencode-ai/sdk": "workspace:*",
     "@opencode-ai/ui": "workspace:*",
+    "decibri": "5.3.0",
     "@opentui/core": "catalog:",
     "@opentui/keymap": "catalog:",
     "@opentui/solid": "catalog:",

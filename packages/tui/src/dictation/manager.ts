@@ -4,8 +4,7 @@ import { createAudioCapture } from "./audio-capture"
 import type { WhisperStream, WhisperResult } from "./whisper-stream"
 import { createWhisperStream } from "./whisper-stream"
 import { cleanupTranscription } from "./cleanup"
-import { findWhisperBinary } from "./binary"
-import { getWhisperModelPath } from "./model"
+import { getWhisperModelId } from "./model"
 
 export type DictationStatus = "idle" | "listening" | "processing" | "error"
 
@@ -61,15 +60,7 @@ function createManager(options: DictationManagerOptions): DictationManagerImpl {
       const config = options.config
       const audioDevice = config.audioDevice || "default"
 
-      const whisperBinary = await findWhisperBinary()
-      if (!whisperBinary) {
-        const error = "Whisper binary not found. Install whisper.cpp or ensure it's in your PATH."
-        this._errorMessage = error
-        setStatus(this, "error")
-        throw new Error(error)
-      }
-
-      const modelPath = await getWhisperModelPath(config.model)
+      const modelId = getWhisperModelId(config.model)
 
       let audioCapture: AudioCapture
       try {
@@ -87,8 +78,7 @@ function createManager(options: DictationManagerOptions): DictationManagerImpl {
       }
 
       const whisperStream = createWhisperStream({
-        binary: whisperBinary,
-        model: modelPath,
+        model: modelId,
       })
 
       await whisperStream.start()
