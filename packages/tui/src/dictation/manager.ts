@@ -136,7 +136,6 @@ function createManager(options: DictationManagerOptions): DictationManagerImpl {
 
         try {
           for await (const result of whisperStream.results) {
-            if (abortController.signal.aborted) break
             const text = result.text?.trim()
             if (!text) continue
 
@@ -145,11 +144,19 @@ function createManager(options: DictationManagerOptions): DictationManagerImpl {
               if (cleaned) {
                 options.onText?.(cleaned)
               }
-            } else {
-              const cleaned = interimCleanup(text)
-              if (cleaned) {
-                options.onInterimResult?.(cleaned)
-              }
+              // The final result is only emitted inside whisperStream.stop(),
+              // after the abort signal, so keep looping until it arrives.
+              if (abortController.signal.aborted) break
+              continue
+            }
+
+            // Interim results emitted after a stop request are stale
+            // transcriptions still draining; skip them.
+            if (abortController.signal.aborted) continue
+
+            const cleaned = interimCleanup(text)
+            if (cleaned) {
+              options.onInterimResult?.(cleaned)
             }
           }
         } catch {
