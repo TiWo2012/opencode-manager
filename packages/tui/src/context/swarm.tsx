@@ -37,9 +37,9 @@ export const { use: useSwarm, provider: SwarmProvider } = createSimpleContext({
     }
 
     async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
-      const response = await fetch(new URL(path, sdk.url).toString(), {
+      const response = await sdk.fetch(new URL(path, sdk.url).toString(), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(sdk.headers ?? {}) },
         body: JSON.stringify(body),
       })
       if (!response.ok) {
@@ -50,9 +50,11 @@ export const { use: useSwarm, provider: SwarmProvider } = createSimpleContext({
     }
 
     async function refresh() {
-      const swarms = await post<Swarm.Info[]>("/swarm/list", {})
-      setStore("swarms", swarms)
       setStore("loaded", true)
+      // Swarm support is additive; degrade silently when the server does not
+      // expose the swarm API (e.g. embedded or test environments).
+      const swarms = await post<Swarm.Info[]>("/swarm/list", {}).catch(() => undefined)
+      if (swarms) setStore("swarms", swarms)
     }
 
     async function create(input: { title: string; mode: "normal" | "yolo"; task?: string }) {
