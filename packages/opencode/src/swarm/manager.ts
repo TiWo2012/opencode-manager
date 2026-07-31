@@ -255,10 +255,13 @@ const layer = Layer.effect(
       const now = Date.now()
       const base = yield* gitSvc.defaultBranch(ctx.worktree)
       const baseBranch = base?.name ?? "main"
-      let integrationBranch: string | undefined
-      if (input.mode === "yolo") {
-        integrationBranch = yield* Yolo.ensureYoloBranch({ git: gitSvc, cwd: ctx.worktree }, baseBranch)
-      }
+      const currentBranch = yield* gitSvc.branch(ctx.worktree)
+      // Normal mode integrates into the user's current branch; yolo mode into
+      // the dedicated sandbox branch. Agent worktrees fork from this base.
+      const integrationBranch =
+        input.mode === "yolo"
+          ? yield* Yolo.ensureYoloBranch({ git: gitSvc, cwd: ctx.worktree }, baseBranch)
+          : (currentBranch ?? baseBranch)
       const info: Swarm.Info = {
         id,
         projectID: ctx.project.id,
@@ -576,7 +579,7 @@ const layer = Layer.effect(
         const run = rt.runs.get(agentID)
         switch (job.status) {
           case "completed": {
-            const base = mode === "yolo" ? "yolo" : (rt.info.baseBranch ?? undefined)
+            const base = rt.info.integrationBranch ?? Yolo.integrationBranch(mode, rt.info.baseBranch)
             let stats = { filesChanged: 0, additions: 0, deletions: 0 }
             if (run && base) {
               const result = yield* Yolo.agentStats(yolo, run.worktreeDir, base).pipe(Effect.option)
@@ -633,7 +636,7 @@ const layer = Layer.effect(
         if (!agent || agent.status !== "working") return
         const task = info.plan?.tasks.find((item) => item.id === agentID)
         const mode = info.mode
-        const targetBranch = Yolo.integrationBranch(mode, info.baseBranch)
+        const targetBranch = info.integrationBranch ?? Yolo.integrationBranch(mode, info.baseBranch)
 
         let integrationDir = rt.integrationDir
         if (mode === "yolo" && !integrationDir) {
@@ -651,7 +654,7 @@ const layer = Layer.effect(
         if (yield* gitSvc.branchExists(ctx.worktree, branch)) {
           yield* gitSvc.run(["branch", "-D", branch], { cwd: ctx.worktree }).pipe(Effect.ignore)
         }
-        const baseRef = mode === "yolo" ? "yolo" : (info.baseBranch ?? undefined)
+        const baseRef = info.integrationBranch ?? Yolo.integrationBranch(mode, info.baseBranch)
         const wt = yield* worktree.create({
           name: slugify(`swarm-${agentID}`),
           branch,
@@ -668,7 +671,12 @@ const layer = Layer.effect(
         yield* modifyRuntime(swarmID, (rt2) => {
           const info2 = cloneInfo(rt2.info)
           const item = info2.agents.find((entry) => entry.id === agentID)
-          if (item) item.sessionID = session.id
+          if (item) {
+            item.sessionID = session.id
+            item.branch = wt.branch
+            item.worktree = wt.directory
+            item.startedAt = Date.now()
+          }
           return [undefined, { ...rt2, info: info2 }]
         })
 
@@ -999,7 +1007,7 @@ const layer = Layer.effect(
         })
       }
       const mode = rt.info.mode
-      const target = Yolo.integrationBranch(mode, rt.info.baseBranch)
+      const target = rt.info.integrationBranch ?? Yolo.integrationBranch(mode, rt.info.baseBranch)
 
       let integrationDir = rt.integrationDir
       if (!integrationDir) {
