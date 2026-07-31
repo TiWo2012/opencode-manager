@@ -225,7 +225,7 @@ export const Definitions = {
   tips_toggle: keybind("<leader>h", "Toggle tips on home screen"),
   plugin_manager: keybind("none", "Open plugin manager dialog"),
   plugin_install: keybind("none", "Install plugin"),
-  dictation_toggle: keybind("meta+shift+m", "Toggle voice dictation"),
+  dictation_toggle: keybind("super+shift+m", "Toggle voice dictation"),
 
   which_key_toggle: keybind("ctrl+alt+k", "Toggle which-key panel"),
   which_key_layout_toggle: keybind("ctrl+alt+shift+k", "Switch which-key layout"),

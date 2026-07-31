@@ -393,6 +393,15 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
+        title: "Toggle voice dictation",
+        name: "dictation.toggle",
+        category: "Prompt",
+        hidden: true,
+        run: () => {
+          void toggleDictation()
+        },
+      },
+      {
         title: "Interrupt session",
         name: "session.interrupt",
         category: "Session",
@@ -846,6 +855,14 @@ export function Prompt(props: PromptProps) {
       target: inputTarget,
       enabled: inputTarget() !== undefined && !props.disabled && store.prompt.input !== "",
       bindings: tuiConfig.keybinds.get("prompt.clear"),
+    }
+  })
+
+  useBindings(() => {
+    return {
+      target: inputTarget,
+      enabled: inputTarget() !== undefined && !props.disabled && defaultDictationConfig.enabled,
+      bindings: tuiConfig.keybinds.get("dictation.toggle"),
     }
   })
 
