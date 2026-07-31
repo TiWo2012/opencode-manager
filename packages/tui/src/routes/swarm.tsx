@@ -14,6 +14,7 @@ import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { OPENCODE_BASE_MODE, useBindings } from "../keymap"
 import { Spinner } from "../component/spinner"
+import { useArgs } from "../context/args"
 import type { Swarm } from "@opencode-ai/schema/swarm"
 import path from "path"
 
@@ -105,6 +106,8 @@ export function SwarmView() {
   const renderer = useRenderer()
   const { theme } = useTheme()
   const project = useProject()
+  const args = useArgs()
+  const yoloSession = () => args.yolo === true
   const [tick, setTick] = createSignal(Date.now())
   const [selectedID, setSelectedID] = createSignal<string>()
   const [agentIndex, setAgentIndex] = createSignal(0)
@@ -183,14 +186,17 @@ export function SwarmView() {
   function submitTask(value: string) {
     const input = value.trim()
     if (!input || busy()) return
-    const yolo = /\s--yolo\s*$/.test(input)
-    const mode = yolo ? "yolo" : "normal"
-    const title = yolo ? input.replace(/\s--yolo\s*$/, "") : input
+    const yoloSuffix = /\s--yolo\s*$/.test(input)
+    const title = yoloSuffix ? input.replace(/\s--yolo\s*$/, "") : input
+    // `--yolo` in the input wins; otherwise the CLI `--yolo` flag defaults the
+    // whole session to yolo mode.
+    const mode: "normal" | "yolo" = yoloSuffix ? "yolo" : yoloSession() ? "yolo" : "normal"
     setBusy(true)
     const existing = current()
-    const start = existing ? Promise.resolve(existing) : swarm.create({ title, mode })
+    const reuse = existing !== undefined && (existing.status === "idle" || existing.status === "planning")
+    const start = reuse ? Promise.resolve(existing) : swarm.create({ title, mode })
     start
-      .then((info) => swarm.plan({ swarmID: info.id, prompt: input }))
+      .then((info) => swarm.plan({ swarmID: info.id, prompt: title }))
       .then(() => {
         setTask("")
         setBusy(false)
@@ -324,7 +330,7 @@ export function SwarmView() {
       <Show when={current()} keyed>
         {(info) => <SwarmActivity agents={info.agents} status={info.status} />}
       </Show>
-      <Show when={current()} fallback={<EmptyState />} keyed>
+      <Show when={current()} fallback={<EmptyState yolo={yoloSession()} />} keyed>
         {(info) => (
           <>
             <Show when={info.mode === "yolo"}>
@@ -372,6 +378,7 @@ export function SwarmView() {
       <Composer
         value={task()}
         busy={busy()}
+        yolo={yoloSession()}
         onChange={setTask}
         onSubmit={submitTask}
         ref={(input) => {
@@ -383,12 +390,16 @@ export function SwarmView() {
   )
 }
 
-function EmptyState() {
+function EmptyState(props: { yolo: boolean }) {
   const { theme } = useTheme()
   return (
     <box flexGrow={1} flexDirection="column" justifyContent="center" alignItems="center" gap={1}>
       <text fg={theme.text}>No swarm running.</text>
-      <text fg={theme.textMuted}>Describe a task to start one. Append --yolo to skip human review.</text>
+      <text fg={theme.textMuted}>
+        {props.yolo
+          ? "Describe a task — the swarm will plan and execute autonomously on the yolo branch."
+          : "Describe a task to start one. Append --yolo to skip human review."}
+      </text>
     </box>
   )
 }
@@ -426,46 +437,71 @@ function PlanPanel(props: {
   onCancel: () => void
 }) {
   const { theme } = useTheme()
+  const risk = props.plan.risk
+  const riskColor =
+    risk.score >= 8 ? theme.error : risk.score >= 6 ? theme.warning : risk.score >= 3 ? theme.info : theme.success
   return (
     <box
       flexDirection="column"
       gap={1}
       border={true}
-      borderColor={theme.borderSubtle}
+      borderColor={theme.primary}
       paddingLeft={1}
       paddingRight={1}
       paddingTop={1}
       paddingBottom={1}
     >
-      <text attributes={TextAttributes.BOLD} fg={theme.text}>
-        PLAN
-      </text>
-      <text fg={theme.textMuted}>{props.plan.summary}</text>
-      <box flexDirection="column">
+      <box flexDirection="row" alignItems="center" gap={1}>
+        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+          PLAN
+        </text>
+        <text fg={theme.textMuted}>awaiting review</text>
+      </box>
+      <text fg={theme.text}>{props.plan.summary}</text>
+      <box flexDirection="column" gap={1}>
         <For each={props.plan.tasks}>
-          {(task) => (
-            <box flexDirection="row" gap={1}>
-              <text fg={theme.text}>• {task.title}</text>
-              <Show when={task.dependsOn.length > 0}>
-                <text fg={theme.textMuted}>after {task.dependsOn.join(", ")}</text>
+          {(task, index) => (
+            <box flexDirection="column" gap={0}>
+              <box flexDirection="row" gap={1}>
+                <text fg={theme.textMuted}>{index() + 1}.</text>
+                <text fg={theme.text}>{task.title}</text>
+                <Show when={task.agent}>
+                  <text fg={theme.textMuted}>[{task.agent}]</text>
+                </Show>
+              </box>
+              <Show when={task.description}>
+                <text fg={theme.textMuted} paddingLeft={3}>
+                  {Locale.truncate(task.description ?? "", 90)}
+                </text>
               </Show>
+              <box flexDirection="row" gap={2} paddingLeft={3}>
+                <Show when={task.dependsOn.length > 0}>
+                  <text fg={theme.textMuted}>after: {task.dependsOn.join(", ")}</text>
+                </Show>
+                <Show when={task.requiresReview}>
+                  <text fg={theme.warning}>review</text>
+                </Show>
+                <Show when={(task.validation?.length ?? 0) > 0}>
+                  <text fg={theme.textMuted}>validate: {task.validation!.join("; ")}</text>
+                </Show>
+              </box>
             </box>
           )}
         </For>
       </box>
-      <box flexDirection="row" gap={2}>
-        <text attributes={TextAttributes.BOLD} fg={theme.warning}>
-          RISK ASSESSMENT
+      <box flexDirection="row" gap={2} alignItems="center">
+        <text attributes={TextAttributes.BOLD} fg={theme.text}>
+          RISK
         </text>
-        <text fg={theme.text}>{props.plan.risk.score}/10</text>
-        <text fg={theme.textMuted}>{props.plan.risk.reason}</text>
-        <text fg={theme.warning}>policy: {props.plan.risk.policy}</text>
-        <Show when={props.plan.risk.escalated}>
+        <text fg={riskColor}>{risk.score}/10</text>
+        <text fg={theme.textMuted}>policy: {risk.policy}</text>
+        <Show when={risk.escalated}>
           <text fg={theme.error}>escalated</text>
         </Show>
       </box>
+      <text fg={theme.textMuted}>{Locale.truncate(risk.reason, 140)}</text>
       <Show when={props.showActions}>
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} paddingTop={1}>
           <Show when={props.showApprove}>
             <ActionButton color={theme.primary} onPress={props.onApprove}>
               Approve
@@ -480,7 +516,7 @@ function PlanPanel(props: {
         </box>
       </Show>
       <Show when={!props.showActions && props.swarm.status === "planning"}>
-        <box flexDirection="row" gap={1}>
+        <box flexDirection="row" gap={1} paddingTop={1}>
           <ActionButton color={theme.info} onPress={props.onStart}>
             Start
           </ActionButton>
@@ -697,6 +733,7 @@ function ChangesSummary(props: { agents: readonly Swarm.Agent[] }) {
 function Composer(props: {
   value: string
   busy: boolean
+  yolo: boolean
   onChange: (value: string) => void
   onSubmit: (value: string) => void
   ref?: (input: InputRenderable | undefined) => void
@@ -704,11 +741,15 @@ function Composer(props: {
   const { theme } = useTheme()
   return (
     <box flexDirection="row" alignItems="center" gap={1} paddingBottom={1}>
-      <text fg={theme.textMuted}>task</text>
+      <text fg={props.yolo ? theme.warning : theme.textMuted}>{props.yolo ? "yolo" : "task"}</text>
       <input
         flexGrow={1}
         value={props.value}
-        placeholder="Describe a task for the swarm... (append --yolo to skip human review)"
+        placeholder={
+          props.yolo
+            ? "Describe a task — the swarm runs autonomously on the yolo branch"
+            : "Describe a task for the swarm... (append --yolo to skip human review)"
+        }
         placeholderColor={theme.textMuted}
         textColor={props.busy ? theme.textMuted : theme.text}
         focusedTextColor={theme.text}

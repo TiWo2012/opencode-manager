@@ -6,7 +6,7 @@ $ARGUMENTS
 
 ## What to do
 
-1. If the user's arguments contain `--yolo`, use `mode: "yolo"` — the swarm executes autonomously and integrates into a dedicated `yolo` branch.
+1. If the user's arguments contain `--yolo`, use `mode: "yolo"` — the swarm executes autonomously and integrates into a dedicated `yolo` branch. (When the session was launched with `opencode --yolo`, the swarm tool already defaults to yolo.)
 2. To create and plan a swarm, call the `swarm` tool with `task: "<the full task>"` and optionally `mode`.
 3. The tool returns a plan summary: tasks, dependencies, risk score (a FATALITY score), and the policy decision.
 4. If the plan's policy is `human-approval` (score 10/10), DO NOT start the swarm — present the plan and ask the user to approve it.

@@ -309,6 +309,16 @@ const layer = Layer.effect(
 
     const plan = Effect.fn("Swarm.plan")(function* (input) {
       const swarmID = input.swarmID
+      const before = yield* getRuntime(swarmID)
+      // Only plan a swarm that hasn't started (or finished) yet.
+      if (
+        before.info.status === "running" ||
+        before.info.status === "completed" ||
+        before.info.status === "failed" ||
+        before.info.status === "cancelled"
+      ) {
+        return before.info
+      }
       const active = yield* modifyRuntime(swarmID, (rt) => {
         if (rt.planFiber) return [true, rt]
         const info = cloneInfo(rt.info)

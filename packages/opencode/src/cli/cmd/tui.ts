@@ -207,6 +207,11 @@ export const TuiThreadCommand = cmd({
       }
       const cwd = Filesystem.resolve(process.cwd())
 
+      // `--yolo` turns the swarm on for the whole TUI session: the server-side
+      // /swarm command reads OPENCODE_YOLO via RuntimeFlags, and the TUI view
+      // receives the flag through the run args.
+      if (args.yolo) process.env.OPENCODE_YOLO = "1"
+
       const worker = new Worker(file, {
         env: Object.fromEntries(
           Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
@@ -292,6 +297,7 @@ export const TuiThreadCommand = cmd({
               prompt,
               fork: args.fork,
               auto: args.auto || args.yolo || args["dangerously-skip-permissions"],
+              yolo: args.yolo,
             },
           }),
         )

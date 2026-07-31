@@ -15,17 +15,54 @@ import { Swarm } from "@opencode-ai/schema/swarm"
 
 const decodePlan = Schema.decodeUnknownOption(Swarm.Plan)
 
+/**
+ * Extract the first parseable JSON object from arbitrary text (the planner may
+ * emit reasoning before the JSON). Uses brace matching that skips braces inside
+ * string literals, and keeps scanning for the next object if a balanced region
+ * fails to parse (e.g. reasoning text that itself contains braces).
+ */
 function extractJson(text: string): Option.Option<unknown> {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
   const candidate = fenced ? (fenced[1] ?? text) : text
-  const start = candidate.indexOf("{")
-  const end = candidate.lastIndexOf("}")
-  if (start === -1 || end === -1 || end <= start) return Option.none()
-  const raw = candidate.slice(start, end + 1)
-  try {
-    return Option.some(JSON.parse(raw) as unknown)
-  } catch {
-    return Option.none()
+  let scanFrom = 0
+  for (;;) {
+    const start = candidate.indexOf("{", scanFrom)
+    if (start === -1) return Option.none()
+    let depth = 0
+    let inString = false
+    let escaped = false
+    let matched = false
+    for (let index = start; index < candidate.length; index++) {
+      const char = candidate[index]
+      if (inString) {
+        if (escaped) {
+          escaped = false
+        } else if (char === "\\") {
+          escaped = true
+        } else if (char === '"') {
+          inString = false
+        }
+        continue
+      }
+      if (char === '"') {
+        inString = true
+      } else if (char === "{") {
+        depth++
+      } else if (char === "}") {
+        depth--
+        if (depth === 0) {
+          const raw = candidate.slice(start, index + 1)
+          try {
+            return Option.some(JSON.parse(raw) as unknown)
+          } catch {
+            matched = true
+            break
+          }
+        }
+      }
+    }
+    if (!matched) return Option.none()
+    scanFrom = start + 1
   }
 }
 
@@ -96,14 +133,19 @@ function finalText(result: SessionV1.WithParts): string {
 
 const PLANNER_INSTRUCTIONS = `
 You are planning a multi-agent software task. Analyze the request below and the
-current repository, then output a plan as a SINGLE JSON object with exactly
-this shape (no prose, no markdown fences, no comments):
+current repository, then produce a plan.
+
+OUTPUT REQUIREMENT (critical):
+Respond with ONLY a single JSON object. Do not include any thinking, reasoning,
+explanation, markdown fences, code blocks, or text before or after the JSON.
+The very first character of your reply must be "{" and the last character "}".
+Use exactly this shape:
 
 {
   "summary": "one-paragraph summary of the approach",
   "tasks": [
     {
-      "id": "short kebab-case id (unique)",
+      "id": "short kebab-case id (unique, 3-30 chars)",
       "title": "short imperative title",
       "description": "what the agent should implement (optional)",
       "agent": "general | explore | build (optional, default general)",
@@ -114,14 +156,29 @@ this shape (no prose, no markdown fences, no comments):
   ],
   "risk": {
     "score": <integer 1-10>,
-    "reason": "why this fatality score"
+    "reason": "one or two sentences explaining the score"
   }
 }
 
-RISK RUBRIC: the score measures the potential impact of autonomous execution
-going catastrophically wrong — NOT complexity. 1-2: isolated, reversible. 3-5:
-moderate blast radius. 6-7: wide impact. 8-9: destructive or hard to reverse.
-10: human approval is required (never bypass this).
+RISK RUBRIC — the score measures the FATALITY of autonomous execution going
+catastrophically wrong: data loss, unrecoverable state, production impact,
+breaking infrastructure. It is NOT about code size, difficulty, or how many
+agents are needed.
+
+- Score 1-2 (automatic): work confined to this repository, fully reversible
+  with git, has tests, touches no production systems or external resources.
+  MOST development tasks fall here — e.g. writing tests, adding features,
+  refactoring, documentation.
+- Score 3-5 (self-review): touches build/release tooling, migrations, or
+  anything whose failure is annoying but recoverable.
+- Score 6-7 (reviewer): could affect many users or external systems, hard to
+  reverse, but not destructive.
+- Score 8-9 (conservative): destructive or very hard to reverse, production
+  data at risk.
+- Score 10 (human approval): irreversible destruction, production data loss,
+  infrastructure outside the repository. NEVER score 10 for ordinary code
+  work. When in doubt, prefer a LOW score (1-3) and note the uncertainty in
+  the reason.
 
 Split the work into small parallelizable tasks with explicit dependencies.
 Avoid over-decomposing; 2-6 tasks is typical. Prefer the "general" agent unless
@@ -131,10 +188,10 @@ plan ("build").
 THE TASK:
 `.trim()
 
-/** Fallback plan when the planner output cannot be parsed (risk 10 = human approval). */
+/** Fallback plan when the planner output cannot be parsed (kept low-risk). */
 export function fallbackPlan(task: string, assessedAt: number): Swarm.Plan {
   return {
-    summary: `Automatic fallback plan for: ${task}`,
+    summary: `Fallback plan for: ${task}`,
     tasks: [
       {
         id: "task-1",
@@ -145,9 +202,9 @@ export function fallbackPlan(task: string, assessedAt: number): Swarm.Plan {
       },
     ],
     risk: {
-      score: 10,
-      reason: "Plan generation failed; conservative human approval required",
-      policy: "human-approval",
+      score: 3,
+      reason: "The planner could not produce a structured plan, so a conservative single-task default was used. Review before starting.",
+      policy: "self-review",
       assessedAt,
     },
   }

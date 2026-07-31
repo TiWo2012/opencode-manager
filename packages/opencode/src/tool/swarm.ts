@@ -1,5 +1,6 @@
 import { Swarm } from "@opencode-ai/schema/swarm"
 import { SwarmService } from "@/swarm/service"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Effect, Option, Schema } from "effect"
 import * as Tool from "./tool"
 
@@ -62,6 +63,7 @@ function renderStatus(info: Swarm.Info) {
 export const SwarmTool = Tool.define(
   "swarm",
   Effect.gen(function* () {
+    const flags = yield* RuntimeFlags.Service
     return {
       description: [
         "Create, plan, and control multi-agent swarms. Use mode 'yolo' for autonomous execution on a dedicated yolo branch.",
@@ -78,7 +80,9 @@ export const SwarmTool = Tool.define(
           const manager = managerOption.value
 
           if (params.task) {
-            const info = yield* manager.create({ title: params.task, mode: params.mode ?? "normal", task: params.task })
+            // `opencode --yolo` (OPENCODE_YOLO) makes yolo the default mode.
+            const mode = params.mode ?? (flags.swarmYolo ? "yolo" : "normal")
+            const info = yield* manager.create({ title: params.task, mode, task: params.task })
             const planned = yield* manager.plan({ swarmID: info.id, prompt: params.task })
             return { title: "Swarm planned", metadata: {}, output: renderPlan(planned) }
           }
