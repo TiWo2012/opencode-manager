@@ -339,8 +339,13 @@ const layer = Layer.effect(
       return result.exitCode === 0
     })
 
+    /**
+     * Create a branch without switching the current worktree onto it.
+     * `git branch <name> <base>` never changes HEAD, so this is safe to call
+     * from the user's primary worktree (used by the swarm `yolo` integration).
+     */
     const createBranch = Effect.fn("Git.createBranch")(function* (cwd: string, branch: string, base?: string) {
-      return yield* run(["switch", "-c", branch, ...(base ? [base] : [])], { cwd })
+      return yield* run(["branch", branch, ...(base ? [base] : [])], { cwd })
     })
 
     const checkout = Effect.fn("Git.checkout")(function* (cwd: string, branch: string) {
