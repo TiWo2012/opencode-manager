@@ -24,6 +24,7 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
   const catalog = yield* Catalog.Service
   const commands = yield* CommandV2.Service
   const integration = yield* Integration.Service
+  const modelDb = yield* ModelDatabase.Service
   const reference = yield* Reference.Service
   const skill = yield* SkillV2.Service
 
@@ -190,6 +191,18 @@ export const make = Effect.fn("PluginHost.make")(function* (plugin: PluginV2.Int
             },
           }),
         ),
+    },
+    modelDatabase: {
+      registerProvider: (id, info) =>
+        modelDb.registerProvider(id, Schema.decodeUnknownSync(ProviderV2.Info)(info) as ProviderV2.MutableInfo).pipe(
+          Effect.orDie,
+        ),
+      registerModel: (providerID, modelID, info) =>
+        modelDb
+          .registerModel(providerID, modelID, Schema.decodeUnknownSync(ModelV2.Info)(info) as ModelV2.MutableInfo)
+          .pipe(Effect.orDie),
+      removeProvider: (providerID) => modelDb.removeProvider(providerID).pipe(Effect.orDie),
+      removeModel: (providerID, modelID) => modelDb.removeModel(providerID, modelID).pipe(Effect.orDie),
     },
     plugin: {
       add: (input) => plugin.add(PluginV2.ID.make(input.id), input.effect),

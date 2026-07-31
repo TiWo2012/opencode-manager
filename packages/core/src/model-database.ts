@@ -1,6 +1,7 @@
 export * as ModelDatabase from "./model-database"
 
 import { and, eq } from "drizzle-orm"
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core/errors"
 import { Context, Effect, Layer } from "effect"
 import { Database } from "./database/database"
 import { makeLocationNode } from "./effect/app-node"
@@ -13,13 +14,13 @@ const Updated = EventV2.define({ type: "model-database.updated", schema: {} })
 export const Event = { Updated }
 
 export interface Interface {
-  readonly registerProvider: (id: string, info: ProviderV2.MutableInfo) => Effect.Effect<void>
-  readonly registerModel: (providerID: string, modelID: string, info: ModelV2.MutableInfo) => Effect.Effect<void>
-  readonly listProviders: () => Effect.Effect<Array<{ id: string; info: ProviderV2.MutableInfo }>>
-  readonly listModels: (providerID: string) => Effect.Effect<Array<{ id: string; info: ModelV2.MutableInfo }>>
-  readonly removeProvider: (providerID: string) => Effect.Effect<void>
-  readonly removeModel: (providerID: string, modelID: string) => Effect.Effect<void>
-  readonly getModel: (providerID: string, modelID: string) => Effect.Effect<ModelV2.MutableInfo | undefined>
+  readonly registerProvider: (id: string, info: ProviderV2.MutableInfo) => Effect.Effect<void, EffectDrizzleQueryError>
+  readonly registerModel: (providerID: string, modelID: string, info: ModelV2.MutableInfo) => Effect.Effect<void, EffectDrizzleQueryError>
+  readonly listProviders: () => Effect.Effect<Array<{ id: string; info: ProviderV2.MutableInfo }>, EffectDrizzleQueryError>
+  readonly listModels: (providerID: string) => Effect.Effect<Array<{ id: string; info: ModelV2.MutableInfo }>, EffectDrizzleQueryError>
+  readonly removeProvider: (providerID: string) => Effect.Effect<void, EffectDrizzleQueryError>
+  readonly removeModel: (providerID: string, modelID: string) => Effect.Effect<void, EffectDrizzleQueryError>
+  readonly getModel: (providerID: string, modelID: string) => Effect.Effect<ModelV2.MutableInfo | undefined, EffectDrizzleQueryError>
 }
 
 export class Service extends Context.Service<Service, Interface>()("@opencode/ModelDatabase") {}
@@ -88,5 +89,7 @@ const layer = Layer.effect(
     return Service.of(service)
   }),
 )
+
+export const locationLayer = layer
 
 export const node = makeLocationNode({ service: Service, layer, deps: [Database.node, EventV2.node] })

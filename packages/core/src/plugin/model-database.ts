@@ -11,12 +11,12 @@ export const ModelDatabasePlugin = define({
 
     yield* ctx.catalog.transform(
       Effect.fn(function* (catalog) {
-        const providers = yield* modelDb.listProviders()
+        const providers = yield* modelDb.listProviders().pipe(Effect.orDie)
         for (const { id, info } of providers) {
           catalog.provider.update(id, (provider) => {
             Object.assign(provider, info)
           })
-          const models = yield* modelDb.listModels(id)
+          const models = yield* modelDb.listModels(id).pipe(Effect.orDie)
           for (const { id: modelID, info: modelInfo } of models) {
             catalog.model.update(id, modelID, (model) => {
               Object.assign(model, modelInfo)
