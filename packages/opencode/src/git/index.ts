@@ -88,6 +88,13 @@ export interface Interface {
   readonly patchUntracked: (cwd: string, file: string, options?: PatchOptions) => Effect.Effect<Patch>
   readonly statUntracked: (cwd: string, file: string) => Effect.Effect<Stat | undefined>
   readonly applyPatch: (cwd: string, patch: string) => Effect.Effect<Result>
+  readonly branches: (cwd: string) => Effect.Effect<string[]>
+  readonly branchExists: (cwd: string, branch: string) => Effect.Effect<boolean>
+  readonly createBranch: (cwd: string, branch: string, base?: string) => Effect.Effect<Result>
+  readonly checkout: (cwd: string, branch: string) => Effect.Effect<Result>
+  readonly merge: (cwd: string, branch: string, message?: string) => Effect.Effect<Result>
+  readonly commitAll: (cwd: string, message: string) => Effect.Effect<Result>
+  readonly log: (cwd: string, range?: string, maxCount?: number) => Effect.Effect<string[]>
 }
 
 const kind = (code: string): Kind => {
@@ -323,6 +330,40 @@ const layer = Layer.effect(
       return yield* run(["apply", "-"], { cwd, stdin: stdin(patch) })
     })
 
+    const branches = Effect.fn("Git.branches")(function* (cwd: string) {
+      return yield* refs(cwd)
+    })
+
+    const branchExists = Effect.fn("Git.branchExists")(function* (cwd: string, branch: string) {
+      const result = yield* run(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd })
+      return result.exitCode === 0
+    })
+
+    const createBranch = Effect.fn("Git.createBranch")(function* (cwd: string, branch: string, base?: string) {
+      return yield* run(["switch", "-c", branch, ...(base ? [base] : [])], { cwd })
+    })
+
+    const checkout = Effect.fn("Git.checkout")(function* (cwd: string, branch: string) {
+      return yield* run(["switch", branch], { cwd })
+    })
+
+    const merge = Effect.fn("Git.merge")(function* (cwd: string, branch: string, message?: string) {
+      if (message) return yield* run(["merge", "--no-ff", "-m", message, branch], { cwd })
+      return yield* run(["merge", "--no-ff", branch], { cwd })
+    })
+
+    const commitAll = Effect.fn("Git.commitAll")(function* (cwd: string, message: string) {
+      const add = yield* run(["add", "-A"], { cwd })
+      if (add.exitCode !== 0) return add
+      return yield* run(["commit", "-m", message], { cwd })
+    })
+
+    const log = Effect.fn("Git.log")(function* (cwd: string, range?: string, maxCount = 20) {
+      const args = ["log", `--max-count=${maxCount}`, "--oneline"]
+      if (range) args.push(range)
+      return yield* lines(args, { cwd })
+    })
+
     return Service.of({
       run,
       branch,
@@ -339,6 +380,13 @@ const layer = Layer.effect(
       patchUntracked,
       statUntracked,
       applyPatch,
+      branches,
+      branchExists,
+      createBranch,
+      checkout,
+      merge,
+      commitAll,
+      log,
     })
   }),
 )
