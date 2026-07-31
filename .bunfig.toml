@@ -1,0 +1,7 @@
+# Bun install configuration
+[install]
+# The TUI dictation pipeline consumes decibri, which is published frequently.
+# Bun's minimum-release-age supply-chain gate (default 3 days) blocks fresh
+# CI installs from resolving versions published within that window, so relax
+# it for this repo's own intentional dependencies.
+minimumReleaseAge = 0
