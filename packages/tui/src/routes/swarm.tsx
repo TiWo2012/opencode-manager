@@ -13,6 +13,7 @@ import { DialogPrompt } from "../ui/dialog-prompt"
 import { Locale } from "../util/locale"
 import { getScrollAcceleration } from "../util/scroll"
 import { OPENCODE_BASE_MODE, useBindings } from "../keymap"
+import { Spinner } from "../component/spinner"
 import type { Swarm } from "@opencode-ai/schema/swarm"
 import path from "path"
 
@@ -44,6 +45,49 @@ function swarmStatusColor(status: Swarm.Status, theme: ReturnType<typeof useThem
   if (status === "running" || status === "planning") return theme.info
   if (status === "paused") return theme.warning
   return theme.textMuted
+}
+
+function swarmActive(status: Swarm.Status) {
+  return status === "running" || status === "planning" || status === "paused"
+}
+
+/** Live activity line under the header so it is obvious the swarm is doing something. */
+function SwarmActivity(props: { agents: readonly Swarm.Agent[]; status: Swarm.Status }) {
+  const { theme } = useTheme()
+  if (props.status === "planning") {
+    return (
+      <box flexDirection="row" gap={1} paddingBottom={1}>
+        <Spinner color={theme.info} />
+        <text fg={theme.textMuted}>Planning…</text>
+      </box>
+    )
+  }
+  if (props.status === "running") {
+    const working = props.agents.filter((agent) => agent.status === "working" || agent.status === "merging").length
+    const waiting = props.agents.filter((agent) => agent.status === "waiting" || agent.status === "queued").length
+    const reviewing = props.agents.filter((agent) => agent.status === "awaiting-review").length
+    const done = props.agents.filter((agent) => agent.status === "completed" || agent.status === "merged").length
+    const parts: string[] = []
+    if (working > 0) parts.push(`${working} working`)
+    if (waiting > 0) parts.push(`${waiting} waiting`)
+    if (reviewing > 0) parts.push(`${reviewing} awaiting review`)
+    if (done > 0) parts.push(`${done} done`)
+    const label = parts.length > 0 ? parts.join(" · ") : "starting agents…"
+    return (
+      <box flexDirection="row" gap={1} paddingBottom={1}>
+        <Spinner color={theme.info} />
+        <text fg={theme.textMuted}>{label}</text>
+      </box>
+    )
+  }
+  if (props.status === "paused") {
+    return (
+      <box flexDirection="row" gap={1} paddingBottom={1}>
+        <text fg={theme.warning}>⏸ paused</text>
+      </box>
+    )
+  }
+  return null
 }
 
 function agentRuntime(agent: Swarm.Agent, now: number) {
@@ -269,11 +313,17 @@ export function SwarmView() {
                 {info.title}
               </text>
               <text fg={theme.textMuted}>{info.mode}</text>
+              <Show when={swarmActive(info.status)}>
+                <Spinner color={theme.info} />
+              </Show>
               <text fg={swarmStatusColor(info.status, theme)}>{info.status}</text>
             </>
           )}
         </Show>
       </box>
+      <Show when={current()} keyed>
+        {(info) => <SwarmActivity agents={info.agents} status={info.status} />}
+      </Show>
       <Show when={current()} fallback={<EmptyState />} keyed>
         {(info) => (
           <>
@@ -556,9 +606,12 @@ function AgentRow(props: {
     lastClickAt = now
   }
   const color = agentStatusColor(props.agent.status, theme)
+  const animated = props.agent.status === "working" || props.agent.status === "merging"
   return (
     <box flexDirection="row" gap={1} backgroundColor={props.selected ? theme.backgroundElement : undefined} onMouseDown={handleClick}>
-      <text fg={color}>{AGENT_GLYPH[props.agent.status]}</text>
+      <Show when={animated} fallback={<text fg={color}>{AGENT_GLYPH[props.agent.status]}</text>}>
+        <Spinner color={color} />
+      </Show>
       <text attributes={props.selected ? TextAttributes.BOLD : undefined} fg={props.selected ? theme.text : theme.textMuted}>
         {props.agent.name}
       </text>
