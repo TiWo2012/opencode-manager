@@ -53,6 +53,8 @@ import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
+import { SwarmView } from "./routes/swarm"
+import { SwarmProvider } from "./context/swarm"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -106,6 +108,7 @@ const appGlobalBindingCommands = [
   "session.quick_switch.7",
   "session.quick_switch.8",
   "session.quick_switch.9",
+  "swarm.open",
 ] as const
 
 const appBindingCommands = [
@@ -142,6 +145,7 @@ const appBindingCommands = [
   "app.toggle.diffwrap",
   "app.toggle.paste_summary",
   "app.toggle.session_directory_filter",
+  "swarm.open",
 ] as const
 
 export type TuiInput = {
@@ -310,8 +314,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                           <PermissionProvider>
                                             <ProjectProvider>
                                               <SyncProvider>
-                                                <DataProvider>
-                                                  <ThemeProvider mode={mode}>
+                                                <SwarmProvider>
+                                                  <DataProvider>
+                                                    <ThemeProvider mode={mode}>
                                                     <LocalProvider>
                                                       <PromptStashProvider>
                                                         <DialogProvider>
@@ -334,8 +339,9 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                     </LocalProvider>
                                                   </ThemeProvider>
                                                 </DataProvider>
-                                              </SyncProvider>
-                                            </ProjectProvider>
+                                              </SwarmProvider>
+                                            </SyncProvider>
+                                          </ProjectProvider>
                                           </PermissionProvider>
                                         </SDKProvider>
                                       </PluginRuntimeProvider>
@@ -477,6 +483,11 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
 
     if (route.data.type === "plugin") {
       renderer.setTerminalTitle(`OCM | ${route.data.id}`)
+      return
+    }
+
+    if (route.data.type === "swarm") {
+      renderer.setTerminalTitle("OCM | Swarm")
     }
   })
 
@@ -686,6 +697,16 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
           route.navigate({
             type: "home",
           })
+          dialog.clear()
+        },
+      },
+      {
+        name: "swarm.open",
+        title: "Swarm",
+        category: "Swarm",
+        slashName: "swarm",
+        run: () => {
+          route.navigate({ type: "swarm" })
           dialog.clear()
         },
       },
@@ -1214,6 +1235,9 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
               <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
                 {(_) => <Session />}
               </Show>
+            </Match>
+            <Match when={route.data.type === "swarm"}>
+              <SwarmView />
             </Match>
           </Switch>
           {plugin()}

@@ -65,6 +65,9 @@ function routeCurrent(route: ReturnType<typeof useRoute>): TuiPluginApi["route"]
       },
     }
   }
+  if (route.data.type === "swarm") {
+    return { name: "swarm" }
+  }
 
   return {
     name: route.data.id,

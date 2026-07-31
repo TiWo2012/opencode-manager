@@ -115,6 +115,11 @@ export const Definitions = {
   session_quick_switch_8: keybind("<leader>8", "Switch to session in quick slot 8"),
   session_quick_switch_9: keybind("<leader>9", "Switch to session in quick slot 9"),
 
+  swarm_open: keybind("ctrl+s", "Open swarm view"),
+  swarm_cancel: keybind("ctrl+k", "Cancel agent"),
+  swarm_merge: keybind("ctrl+m", "Merge agent"),
+  swarm_review: keybind("ctrl+r", "Review agent"),
+
   stash_delete: keybind("ctrl+d", "Delete stash entry"),
   model_provider_list: keybind("ctrl+a", "Open provider list from model dialog"),
   model_favorite_toggle: keybind("ctrl+f", "Toggle model favorite status"),
@@ -322,6 +327,10 @@ export const CommandMap = {
   session_quick_switch_7: "session.quick_switch.7",
   session_quick_switch_8: "session.quick_switch.8",
   session_quick_switch_9: "session.quick_switch.9",
+  swarm_open: "swarm.open",
+  swarm_cancel: "swarm.cancel",
+  swarm_merge: "swarm.merge",
+  swarm_review: "swarm.review",
   stash_delete: "stash.delete",
   model_provider_list: "model.dialog.provider",
   model_favorite_toggle: "model.dialog.favorite",
