@@ -168,7 +168,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
 
     const assetCandidates = Effect.fnUntraced(function* (target: string) {
       const response = yield* httpOk.execute(
-        HttpClientRequest.get(`https://api.github.com/repos/anomalyco/opencode/releases/tags/v${target}`).pipe(
+        HttpClientRequest.get(`https://api.github.com/repos/TiWo2012/opencode-manager/releases/tags/v${target}`).pipe(
           HttpClientRequest.acceptJson,
         ),
       )
@@ -364,7 +364,7 @@ const layer: Layer.Layer<Service, never, HttpClient.HttpClient | AppProcess.Serv
         }
 
         const response = yield* httpOk.execute(
-          HttpClientRequest.get("https://api.github.com/repos/anomalyco/opencode/releases/latest").pipe(
+          HttpClientRequest.get("https://api.github.com/repos/TiWo2012/opencode-manager/releases/latest").pipe(
             HttpClientRequest.acceptJson,
           ),
         )
