@@ -50,6 +50,7 @@ export type SwarmRuntime = {
   runs: Map<string, AgentRun>
   scheduler: Fiber.Fiber<unknown, unknown> | undefined
   integrationDir: string | undefined
+  planFiber: Fiber.Fiber<unknown, unknown> | undefined
 }
 
 type State = {
@@ -278,6 +279,7 @@ const layer = Layer.effect(
           runs: new Map(),
           scheduler: undefined,
           integrationDir: undefined,
+          planFiber: undefined,
         }),
       )
       yield* events.publish(SwarmEvent.Created, { swarm: info }).pipe(Effect.ignore)
@@ -304,69 +306,102 @@ const layer = Layer.effect(
 
     const plan = Effect.fn("Swarm.plan")(function* (input) {
       const swarmID = input.swarmID
-      yield* modifyRuntime(swarmID, (rt) => {
+      const active = yield* modifyRuntime(swarmID, (rt) => {
+        if (rt.planFiber) return [true, rt]
         const info = cloneInfo(rt.info)
         info.status = "planning"
         info.updatedAt = Date.now()
-        return [undefined, { ...rt, info }]
+        return [false, { ...rt, info }]
       })
+      if (active._tag === "Some" && active.value) return yield* get(swarmID)
 
-      const title = (yield* getRuntime(swarmID)).info.title
-      const planned = yield* runPlanner({ title, task: input.prompt })
-        .pipe(
-          Effect.provideService(Session.Service, sessions),
-          Effect.provideService(SessionPrompt.Service, prompt),
-          Effect.provideService(Agent.Service, agents),
-          Effect.exit,
-        )
-      if (Exit.isFailure(planned)) {
-        const squash = Cause.squash(planned.cause)
-        const message = squash instanceof Error ? squash.message : String(squash)
-        yield* modifyRuntime(swarmID, (rt) => {
-          const info = cloneInfo(rt.info)
-          info.status = "failed"
-          info.updatedAt = Date.now()
-          return [undefined, { ...rt, info }]
-        })
-        yield* events.publish(SwarmEvent.Failed, { swarmID, error: message }).pipe(Effect.ignore)
-        return yield* new SwarmConflict({ swarmID, message })
-      }
-      const parsed = planned.value
+      // Publish the planning state immediately so the UI shows feedback while
+      // the planner runs (plan generation on a local model can take a while).
+      const planning = yield* get(swarmID)
+      yield* publishUpdated(planning)
+      yield* notify(swarmID, "Swarm planning", `Generating a plan for "${planning.title}"`, "info")
 
-      const autoApprove = yield* modifyRuntime(swarmID, (rt) => {
-        const info = cloneInfo(rt.info)
-        info.plan = parsed as Types.DeepMutable<Swarm.Plan>
-        info.risk = parsed.risk as Types.DeepMutable<Swarm.RiskAssessment>
-        const automatic = info.mode === "yolo" && SwarmPolicy.canAutoContinue(parsed.risk.policy)
-        if (automatic) info.approved = true
-        info.updatedAt = Date.now()
-        return [automatic, { ...rt, info }]
-      })
-
-      yield* events.publish(SwarmEvent.PlanCreated, { swarmID, plan: parsed }).pipe(Effect.ignore)
-      const automatic = autoApprove._tag === "Some" && autoApprove.value
-      if (automatic) {
-        yield* events.publish(SwarmEvent.PlanApproved, { swarmID, automatic: true }).pipe(Effect.ignore)
-      } else {
-        // The plan needs human approval: normal mode always, and yolo mode when
-        // the policy demands it (score 10 must never be silently bypassed).
-        yield* events
-          .publish(SwarmEvent.RequiresApproval, {
-            swarmID,
-            action: "approve-plan",
-            message: `Plan risk policy is "${parsed.risk.policy}" — approval is required before starting`,
+      const title = planning.title
+      const runPlan = Effect.gen(function* () {
+        const planned = yield* runPlanner({ title, task: input.prompt })
+          .pipe(
+            Effect.provideService(Session.Service, sessions),
+            Effect.provideService(SessionPrompt.Service, prompt),
+            Effect.provideService(Agent.Service, agents),
+            Effect.exit,
+          )
+        if (Exit.isFailure(planned)) {
+          const squash = Cause.squash(planned.cause)
+          const message = squash instanceof Error ? squash.message : String(squash)
+          yield* modifyRuntime(swarmID, (rt) => {
+            const info = cloneInfo(rt.info)
+            info.status = "failed"
+            info.updatedAt = Date.now()
+            return [undefined, { ...rt, info, planFiber: undefined }]
           })
-          .pipe(Effect.ignore)
-      }
-      const info = yield* get(swarmID)
-      yield* publishUpdated(info)
-      yield* notify(
-        swarmID,
-        "Swarm plan ready",
-        automatic ? "Plan generated and auto-approved (yolo)" : "Plan generated, awaiting approval",
-        automatic ? "success" : "info",
+          yield* events.publish(SwarmEvent.Failed, { swarmID, error: message }).pipe(Effect.ignore)
+          const failed = yield* get(swarmID)
+          yield* publishUpdated(failed)
+          yield* notify(swarmID, "Swarm plan failed", message, "error")
+          return
+        }
+        const parsed = planned.value
+
+        const autoApprove = yield* modifyRuntime(swarmID, (rt) => {
+          const info = cloneInfo(rt.info)
+          info.plan = parsed as Types.DeepMutable<Swarm.Plan>
+          info.risk = parsed.risk as Types.DeepMutable<Swarm.RiskAssessment>
+          const automatic = info.mode === "yolo" && SwarmPolicy.canAutoContinue(parsed.risk.policy)
+          if (automatic) info.approved = true
+          info.updatedAt = Date.now()
+          return [automatic, { ...rt, info, planFiber: undefined }]
+        })
+
+        yield* events.publish(SwarmEvent.PlanCreated, { swarmID, plan: parsed }).pipe(Effect.ignore)
+        const automatic = autoApprove._tag === "Some" && autoApprove.value
+        if (automatic) {
+          yield* events.publish(SwarmEvent.PlanApproved, { swarmID, automatic: true }).pipe(Effect.ignore)
+        } else {
+          // The plan needs human approval: normal mode always, and yolo mode when
+          // the policy demands it (score 10 must never be silently bypassed).
+          yield* events
+            .publish(SwarmEvent.RequiresApproval, {
+              swarmID,
+              action: "approve-plan",
+              message: `Plan risk policy is "${parsed.risk.policy}" — approval is required before starting`,
+            })
+            .pipe(Effect.ignore)
+        }
+        const info = yield* get(swarmID)
+        yield* publishUpdated(info)
+        yield* notify(
+          swarmID,
+          "Swarm plan ready",
+          automatic ? "Plan generated and auto-approved (yolo)" : "Plan generated, awaiting approval",
+          automatic ? "success" : "info",
+        )
+      }).pipe(
+        Effect.catchCause((cause) =>
+          Effect.gen(function* () {
+            const squash = Cause.squash(cause)
+            const message = squash instanceof Error ? squash.message : String(squash)
+            yield* modifyRuntime(swarmID, (rt) => {
+              const info = cloneInfo(rt.info)
+              info.status = "failed"
+              info.updatedAt = Date.now()
+              return [undefined, { ...rt, info, planFiber: undefined }]
+            })
+            yield* events.publish(SwarmEvent.Failed, { swarmID, error: message }).pipe(Effect.ignore)
+            const failed = yield* get(swarmID)
+            yield* publishUpdated(failed)
+            yield* notify(swarmID, "Swarm plan failed", message, "error")
+          }),
+        ),
       )
-      return info
+
+      const fiber = yield* runPlan.pipe(Effect.forkIn(scope))
+      yield* modifyRuntime(swarmID, (rt) => [undefined, { ...rt, planFiber: fiber }])
+      return yield* get(swarmID)
     })
 
     // ---- approve -------------------------------------------------------------
@@ -857,6 +892,7 @@ const layer = Layer.effect(
         info.updatedAt = Date.now()
         return [undefined, { ...rt2, info }]
       })
+      if (rt.planFiber) yield* Fiber.interrupt(rt.planFiber).pipe(Effect.ignore)
       if (rt.scheduler) yield* Fiber.interrupt(rt.scheduler).pipe(Effect.ignore)
       yield* events.publish(SwarmEvent.Cancelled, { swarmID }).pipe(Effect.ignore)
       const info = yield* get(swarmID)
