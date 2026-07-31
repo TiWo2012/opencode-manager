@@ -163,7 +163,40 @@ export const Info = Schema.Struct({
   integrationBranch: optional(Schema.String),
   baseBranch: optional(Schema.String),
   risk: optional(RiskAssessment),
+  approved: optional(Schema.Boolean),
+  result: optional(Schema.String),
   createdAt: NonNegativeInt,
   updatedAt: NonNegativeInt,
 })
 export interface Info extends Schema.Schema.Type<typeof Info> {}
+
+// ---- inputs ----
+
+export const CreateInput = Schema.Struct({
+  title: Schema.String,
+  mode: Mode,
+  task: optional(Schema.String),
+}).annotate({ identifier: "SwarmCreateInput" })
+export type CreateInput = Schema.Schema.Type<typeof CreateInput>
+
+export const PlanInput = Schema.Struct({
+  swarmID: ID,
+  prompt: Schema.String,
+}).annotate({ identifier: "SwarmPlanInput" })
+export type PlanInput = Schema.Schema.Type<typeof PlanInput>
+
+export const IDInput = Schema.Struct({
+  swarmID: ID,
+}).annotate({ identifier: "SwarmIDInput" })
+export type IDInput = Schema.Schema.Type<typeof IDInput>
+
+export const AgentAction = Schema.Literals(["cancel", "merge", "review", "retry", "approve-merge"])
+export type AgentAction = typeof AgentAction.Type
+
+export const AgentInput = Schema.Struct({
+  swarmID: ID,
+  agentID: Schema.String,
+  action: AgentAction,
+  message: optional(Schema.String),
+}).annotate({ identifier: "SwarmAgentInput" })
+export type AgentInput = Schema.Schema.Type<typeof AgentInput>
