@@ -125,7 +125,7 @@ function getConfig() {
         appId,
         productName: "OpenCode Manager Beta",
         protocols: { name: "OpenCode Manager Beta", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode-beta", channel: "latest" },
+        publish: { provider: "github", owner: "TiWo2012", repo: "opencode-manager", channel: "latest" },
         rpm: { packageName: "opencode-beta" },
       }
     }
@@ -135,7 +135,7 @@ function getConfig() {
         appId,
         productName: "OpenCode Manager",
         protocols: { name: "OpenCode Manager", schemes: ["opencode"] },
-        publish: { provider: "github", owner: "anomalyco", repo: "opencode", channel: "latest" },
+        publish: { provider: "github", owner: "TiWo2012", repo: "opencode-manager", channel: "latest" },
         deb: { fpm: [legacyDesktopEntryFpm] },
         rpm: { packageName: "opencode", fpm: [legacyDesktopEntryFpm] },
       }
