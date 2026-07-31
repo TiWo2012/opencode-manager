@@ -229,17 +229,39 @@ export const runPlanner = Effect.fn("SwarmPlanner.run")(function* (input: { titl
     agent: agentName,
   })
 
-  const result = yield* prompt.prompt({
-    sessionID: session.id,
-    agent: agentName,
-    parts: [{ type: "text", text: [PLANNER_INSTRUCTIONS, input.task].join("\n\n") }],
+  const runAttempt = Effect.fnUntraced(function* (promptText: string) {
+    const result = yield* prompt.prompt({
+      sessionID: session.id,
+      agent: agentName,
+      parts: [{ type: "text", text: promptText }],
+    })
+    return finalText(result)
   })
 
-  const text = finalText(result)
-  const parsed = parsePlan(text, assessedAt)
+  const first = yield* runAttempt([PLANNER_INSTRUCTIONS, input.task].join("\n\n"))
+  const parsed = parsePlan(first, assessedAt)
   if (parsed) return parsed
+
+  // The model produced no parseable JSON (e.g. only reasoning, or prose).
+  // Retry once with a corrective nudge before giving up.
+  yield* Effect.logWarning("swarm planner first response did not parse; retrying", {
+    output: first.slice(0, 1000),
+  })
+  const second = yield* runAttempt(
+    [
+      PLANNER_INSTRUCTIONS,
+      "Your previous response was not accepted because it was not a single valid JSON object.",
+      "Respond with ONLY the JSON object. No reasoning, no markdown, nothing before the opening brace.",
+      "",
+      "THE TASK:",
+      input.task,
+    ].join("\n\n"),
+  )
+  const retried = parsePlan(second, assessedAt)
+  if (retried) return retried
+
   yield* Effect.logWarning("swarm planner output did not parse into a plan; using fallback", {
-    output: text.slice(0, 1000),
+    output: second.slice(0, 1000),
   })
   return fallbackPlan(input.task, assessedAt)
 })
