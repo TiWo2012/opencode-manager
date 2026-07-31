@@ -11,6 +11,7 @@ import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_REVIEW from "./template/review.txt"
 import PROMPT_BTW from "./template/btw.txt"
 import PROMPT_NTFY from "./template/ntfy.txt"
+import PROMPT_SWARM from "./template/swarm.txt"
 import { LegacyEvent } from "@opencode-ai/schema/legacy-event"
 
 type State = {
@@ -105,6 +106,15 @@ const layer = Layer.effect(
           return PROMPT_NTFY
         },
         hints: hints(PROMPT_NTFY),
+      }
+      commands["swarm"] = {
+        name: "swarm",
+        description: "create, plan, and run multi-agent swarms (use --yolo for autonomous mode)",
+        source: "command",
+        get template() {
+          return PROMPT_SWARM
+        },
+        hints: hints(PROMPT_SWARM),
       }
 
       for (const [name, command] of Object.entries(cfg.command ?? {})) {
