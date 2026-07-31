@@ -144,6 +144,49 @@ const layer = Layer.effect(
       yield* events.publish(SwarmEvent.Notify, { swarmID, title, message, level }).pipe(Effect.ignore)
     })
 
+    /**
+     * Dynamically reassess the fatality score as execution unfolds. Escalation
+     * is always allowed; lowering requires a justification and is never done to
+     * dodge the policy. Escalating to score 10 pauses execution behind explicit
+     * human approval (even in yolo mode).
+     */
+    const reassessRisk = Effect.fn("Swarm.reassessRisk")(function* (
+      swarmID: Swarm.ID,
+      proposed: number,
+      justification: string,
+    ) {
+      const rt = yield* getRuntime(swarmID)
+      const current = rt.info.risk?.score ?? rt.info.plan?.risk.score ?? 3
+      const result = SwarmPolicy.reassess(current, proposed, justification)
+      if (!result.allowed || result.score === current) return
+      const updated = yield* modifyRuntime(swarmID, (rt2) => {
+        const info = cloneInfo(rt2.info)
+        info.risk = {
+          score: result.score,
+          reason: result.reason,
+          policy: result.decision,
+          ...(result.escalated ? { escalated: true } : {}),
+          assessedAt: Date.now(),
+        }
+        info.updatedAt = Date.now()
+        return [info.risk, { ...rt2, info }]
+      })
+      if (updated._tag === "None" || !updated.value) return
+      const risk = updated.value
+      yield* events.publish(SwarmEvent.RiskUpdated, { swarmID, risk }).pipe(Effect.ignore)
+      yield* notify(swarmID, "Risk reassessed", `Fatality score is now ${risk.score}/10 (${risk.policy})`, "warning")
+      if (SwarmPolicy.requiresHumanApproval(risk.policy)) {
+        yield* events
+          .publish(SwarmEvent.RequiresApproval, {
+            swarmID,
+            action: "risk-escalation",
+            message: `Risk escalated to ${risk.score}/10 — human approval is required before continuing`,
+          })
+          .pipe(Effect.ignore)
+        yield* notify(swarmID, "Human approval required", `Risk score is now ${risk.score}/10`, "error")
+      }
+    })
+
     const agentOf = Effect.fn("Swarm.agentOf")(function* (swarmID: Swarm.ID, agentID: string) {
       const rt = yield* getRuntime(swarmID)
       return rt.info.agents.find((item) => item.id === agentID)
@@ -304,6 +347,16 @@ const layer = Layer.effect(
       const automatic = autoApprove._tag === "Some" && autoApprove.value
       if (automatic) {
         yield* events.publish(SwarmEvent.PlanApproved, { swarmID, automatic: true }).pipe(Effect.ignore)
+      } else {
+        // The plan needs human approval: normal mode always, and yolo mode when
+        // the policy demands it (score 10 must never be silently bypassed).
+        yield* events
+          .publish(SwarmEvent.RequiresApproval, {
+            swarmID,
+            action: "approve-plan",
+            message: `Plan risk policy is "${parsed.risk.policy}" — approval is required before starting`,
+          })
+          .pipe(Effect.ignore)
       }
       const info = yield* get(swarmID)
       yield* publishUpdated(info)
@@ -865,6 +918,13 @@ const layer = Layer.effect(
           .publish(SwarmEvent.ReviewRequired, { swarmID: input.swarmID, agent, policy: "reviewer" })
           .pipe(Effect.ignore)
         yield* pushFeedback(input.swarmID, input.agentID, input.message!.trim())
+        // Review found problems — nudge the fatality score up (never down).
+        const current = rt.info.risk?.score ?? rt.info.plan?.risk.score ?? 3
+        yield* reassessRisk(
+          input.swarmID,
+          current + 1,
+          "Review found issues in agent work; risk of unrecoverable state increases",
+        )
       } else {
         const reviewed = yield* agentOf(input.swarmID, input.agentID)
         if (reviewed) {
