@@ -15,6 +15,7 @@ import { getScrollAcceleration } from "../util/scroll"
 import { OPENCODE_BASE_MODE, useBindings } from "../keymap"
 import { Spinner } from "../component/spinner"
 import { useArgs } from "../context/args"
+import { createDictationManager, defaultDictationConfig, type DictationStatus } from "../dictation"
 import type { Swarm } from "@opencode-ai/schema/swarm"
 import path from "path"
 
@@ -113,6 +114,9 @@ export function SwarmView() {
   const [agentIndex, setAgentIndex] = createSignal(0)
   const [task, setTask] = createSignal("")
   const [busy, setBusy] = createSignal(false)
+  const [dictationStatus, setDictationStatus] = createSignal<DictationStatus>("idle")
+  const [interimText, setInterimText] = createSignal<string>()
+  let dictationManager: ReturnType<typeof createDictationManager> | undefined
   let composer: InputRenderable | undefined
 
   onMount(() => {
@@ -122,7 +126,52 @@ export function SwarmView() {
       if (!composer || composer.isDestroyed) return
       composer.focus()
     }, 1)
+
+    dictationManager = createDictationManager({
+      config: defaultDictationConfig,
+      onText: (text) => {
+        if (!composer || composer.isDestroyed) return
+        composer.cursorOffset = composer.plainText.length
+        composer.insertText(text)
+        setInterimText(undefined)
+      },
+      onStatusChange: (status) => {
+        setDictationStatus(status)
+        if (status === "error") {
+          void toast.show({
+            variant: "error",
+            message: dictationManager?.errorMessage ?? "Dictation error",
+            duration: 5000,
+          })
+        }
+      },
+      onInterimResult: (text) => setInterimText(text),
+    })
   })
+
+  onCleanup(() => {
+    if (dictationManager && dictationManager.status === "listening") {
+      dictationManager.stop()
+    }
+  })
+
+  async function toggleDictation() {
+    if (!dictationManager) return
+    if (dictationManager.status === "listening") {
+      await dictationManager.stop()
+      setInterimText(undefined)
+    } else {
+      try {
+        await dictationManager.start()
+      } catch (error) {
+        toast.show({
+          variant: "error",
+          message: (error as Error).message,
+          duration: 5000,
+        })
+      }
+    }
+  }
 
   function focusComposer() {
     setTimeout(() => {
@@ -286,7 +335,23 @@ export function SwarmView() {
         category: "Swarm",
         run: reviewSelected,
       },
+      {
+        title: "Toggle voice dictation",
+        name: "dictation.toggle",
+        category: "Swarm",
+        hidden: true,
+        run: () => {
+          void toggleDictation()
+        },
+      },
     ],
+  }))
+
+  useBindings(() => ({
+    mode: OPENCODE_BASE_MODE,
+    target: () => composer,
+    enabled: () => defaultDictationConfig.enabled,
+    bindings: tuiConfig.keybinds.get("dictation.toggle"),
   }))
 
   useBindings(() => ({
@@ -379,8 +444,12 @@ export function SwarmView() {
         value={task()}
         busy={busy()}
         yolo={yoloSession()}
+        dictationStatus={dictationStatus()}
+        dictationEnabled={defaultDictationConfig.enabled}
+        interimText={interimText()}
         onChange={setTask}
         onSubmit={submitTask}
+        onToggleDictation={() => void toggleDictation()}
         ref={(input) => {
           composer = input
         }}
@@ -734,30 +803,67 @@ function Composer(props: {
   value: string
   busy: boolean
   yolo: boolean
+  dictationStatus: DictationStatus
+  dictationEnabled: boolean
+  interimText?: string
   onChange: (value: string) => void
   onSubmit: (value: string) => void
+  onToggleDictation: () => void
   ref?: (input: InputRenderable | undefined) => void
 }) {
   const { theme } = useTheme()
   return (
-    <box flexDirection="row" alignItems="center" gap={1} paddingBottom={1}>
-      <text fg={props.yolo ? theme.warning : theme.textMuted}>{props.yolo ? "yolo" : "task"}</text>
-      <input
-        flexGrow={1}
-        value={props.value}
-        placeholder={
-          props.yolo
-            ? "Describe a task — the swarm runs autonomously on the yolo branch"
-            : "Describe a task for the swarm... (append --yolo to skip human review)"
-        }
-        placeholderColor={theme.textMuted}
-        textColor={props.busy ? theme.textMuted : theme.text}
-        focusedTextColor={theme.text}
-        cursorColor={theme.primary}
-        onInput={props.onChange}
-        onSubmit={(value) => props.onSubmit(typeof value === "string" ? value : "")}
-        ref={props.ref}
-      />
+    <box flexDirection="column" paddingBottom={1}>
+      <box flexDirection="row" alignItems="center" gap={1}>
+        <text fg={props.yolo ? theme.warning : theme.textMuted}>{props.yolo ? "yolo" : "task"}</text>
+        <input
+          flexGrow={1}
+          value={props.value}
+          placeholder={
+            props.yolo
+              ? "Describe a task — the swarm runs autonomously on the yolo branch"
+              : "Describe a task for the swarm... (append --yolo to skip human review)"
+          }
+          placeholderColor={theme.textMuted}
+          textColor={props.busy ? theme.textMuted : theme.text}
+          focusedTextColor={theme.text}
+          cursorColor={theme.primary}
+          onInput={props.onChange}
+          onSubmit={(value) => props.onSubmit(typeof value === "string" ? value : "")}
+          ref={props.ref}
+        />
+        <Show when={props.dictationEnabled}>
+          <box
+            flexDirection="row"
+            gap={1}
+            alignItems="center"
+            onMouseUp={props.onToggleDictation}
+            opacity={props.dictationStatus === "listening" ? 1 : 0.7}
+          >
+            <text
+              fg={
+                props.dictationStatus === "listening"
+                  ? theme.primary
+                  : props.dictationStatus === "error"
+                    ? theme.error
+                    : theme.textMuted
+              }
+            >
+              {props.dictationStatus === "listening" ? "[●]" : "[○]"}
+            </text>
+            <Show when={props.dictationStatus !== "idle" && props.dictationStatus !== "listening"}>
+              <text fg={theme.textMuted}>
+                {props.dictationStatus === "processing" ? "Processing..." : "Error"}
+              </text>
+            </Show>
+          </box>
+        </Show>
+      </box>
+      <Show when={props.interimText}>
+        <box paddingLeft={2} paddingTop={1}>
+          <text fg={theme.textMuted}>{props.interimText}</text>
+        </box>
+      </Show>
     </box>
   )
 }
