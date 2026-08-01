@@ -45,6 +45,8 @@ import { Skill } from "@/skill"
 import { Discovery } from "@/skill/discovery"
 import { Snapshot } from "@/snapshot"
 import { Storage } from "@/storage/storage"
+import { SwarmManager } from "@/swarm/manager"
+import { SwarmNotify } from "@/swarm/notify"
 import { ToolRegistry } from "@/tool/registry"
 import { Truncate } from "@/tool/truncate"
 import { Worktree } from "@/worktree"
@@ -98,6 +100,7 @@ import { ptyConnectHandlers, ptyHandlers } from "./handlers/pty"
 import { questionHandlers } from "./handlers/question"
 import { sessionHandlers } from "./handlers/session"
 import { syncHandlers } from "./handlers/sync"
+import { swarmHandlers } from "./handlers/swarm"
 import { tuiHandlers } from "./handlers/tui"
 import { handlers } from "@opencode-ai/server/handlers"
 import { buildLocationServiceMap, LocationServiceMap } from "@opencode-ai/core/location-services"
@@ -166,6 +169,7 @@ const instanceApiRoutes = HttpApiBuilder.layer(InstanceHttpApi).pipe(
     providerHandlers,
     sessionHandlers,
     syncHandlers,
+    swarmHandlers,
     tuiHandlers,
     workspaceHandlers,
   ]),
@@ -252,6 +256,8 @@ const app = LayerNode.group([
   Command.node,
   Truncate.node,
   ToolRegistry.node,
+  SwarmManager.node,
+  SwarmNotify.node,
   Format.node,
   Project.node,
   Vcs.node,

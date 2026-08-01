@@ -29,6 +29,24 @@ export const Info = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("busy"),
   }),
+  // Orchestration states used by swarm agents (and available to any session).
+  Schema.Struct({
+    type: Schema.Literal("queued"),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("waiting"),
+    reason: optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("blocked"),
+    reason: optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("review"),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("merging"),
+  }),
 ]).annotate({ identifier: "SessionStatus" })
 export type Info = Schema.Schema.Type<typeof Info>
 

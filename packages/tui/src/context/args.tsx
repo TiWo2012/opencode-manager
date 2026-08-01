@@ -8,6 +8,8 @@ export interface Args {
   sessionID?: string
   fork?: boolean
   auto?: boolean
+  /** Launch the TUI in swarm yolo mode (`opencode tui --yolo`). */
+  yolo?: boolean
 }
 
 export const { use: useArgs, provider: ArgsProvider } = createSimpleContext({

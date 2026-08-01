@@ -272,6 +272,7 @@ export const RunCommand = effectCmd({
       const rawMessage = [...args.message, ...(args["--"] || [])].join(" ")
       const interactive = args.mini
       const auto = args.auto || args.yolo || args["dangerously-skip-permissions"]
+      if (args.yolo) process.env.OPENCODE_YOLO = "1"
       const thinking = interactive ? (args.thinking ?? true) : (args.thinking ?? false)
       const die = (message: string): never => {
         UI.error(message)
