@@ -10,7 +10,7 @@ import { ExitProvider, useExit } from "./context/exit"
 import { EpilogueProvider } from "./context/epilogue"
 import * as Selection from "./util/selection"
 import { createCliRenderer, MouseButton } from "@opentui/core"
-import { RouteProvider, useRoute } from "./context/route"
+import { RouteProvider, useRoute, type Route } from "./context/route"
 import {
   Switch,
   Match,
@@ -460,6 +460,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     kv.get("paste_summary_enabled", !sync.data.config.experimental?.disable_paste_summary),
   )
 
+  // Remember the last non-swarm route so Ctrl+S (swarm.open) can toggle back
+  // out of swarm mode to where the user was before.
+  const [swarmReturnRoute, setSwarmReturnRoute] = createSignal<Route>()
+  createEffect(() => {
+    if (route.data.type !== "swarm") {
+      setSwarmReturnRoute(route.data)
+    }
+  })
+
   // Update terminal window title based on current route and session
   createEffect(() => {
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
@@ -706,6 +715,13 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "Swarm",
         slashName: "swarm",
         run: () => {
+          // Ctrl+S toggles between swarm mode and normal mode: pressing it again
+          // in the swarm view returns to the previous route (or home).
+          if (route.data.type === "swarm") {
+            route.navigate(swarmReturnRoute() ?? { type: "home" })
+            dialog.clear()
+            return
+          }
           route.navigate({ type: "swarm" })
           dialog.clear()
         },
