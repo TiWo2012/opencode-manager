@@ -99,7 +99,6 @@ export const DESKTOP_MENU: DesktopMenu[] = [
         command: "session.new",
         accelerator: { macos: "Shift+Cmd+S" },
       },
-      { type: "item", label: "New Swarm", command: "swarm.new" },
       { type: "item", label: "Open Project...", command: "project.open", accelerator: { macos: "Cmd+O" } },
       {
         type: "item",

@@ -40,7 +40,6 @@ import {
 import { Dynamic } from "solid-js/web"
 import { makeEventListener } from "@solid-primitives/event-listener"
 import { CommandProvider, useCommand, type CommandOption } from "@/context/command"
-import { SwarmCommand } from "@/components/swarm/swarm-command"
 import { CommentsProvider } from "@/context/comments"
 import { FileProvider } from "@/context/file"
 import { ServerSDKProvider } from "@/context/server-sdk"
@@ -72,10 +71,6 @@ import { NewHome } from "@/pages/home"
 import { LegacyHome } from "@/pages/home/legacy-home"
 
 const NewSession = lazy(() => import("@/pages/new-session"))
-
-const SwarmList = lazy(() => import("@/pages/swarm/swarm-list"))
-const SwarmCreate = lazy(() => import("@/pages/swarm/swarm-create"))
-const SwarmDetail = lazy(() => import("@/pages/swarm/swarm-detail"))
 
 const SessionRoute = () => {
   const settings = useSettings()
@@ -316,7 +311,6 @@ function SharedProviders(props: ParentProps) {
       <BodyDesignClass />
       <CommandProvider>
         <DesktopCommands />
-        <SwarmCommand />
         <HighlightsProvider>{props.children}</HighlightsProvider>
       </CommandProvider>
     </>
@@ -637,9 +631,6 @@ function Routes(props: { serverScoped?: JSX.Element }) {
         <Route path="/" component={NewHome} />
         <Route path="/:dir/session/:id" component={NewLayoutLegacySessionRedirect} />
         <Route path="/server/:serverKey/session/:id" component={TargetSessionRoute} />
-        <Route path="/swarm" component={SwarmList} />
-        <Route path="/swarm/new" component={SwarmCreate} />
-        <Route path="/swarm/:id" component={SwarmDetail} />
       </Show>
       <Route path="/new-session" component={DraftRoute} />
     </>

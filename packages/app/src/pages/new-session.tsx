@@ -26,8 +26,6 @@ import { useSessionKey } from "@/pages/session/session-layout"
 import { useComposerCommands } from "@/pages/session/use-composer-commands"
 import { NEW_SESSION_CONTENT_WIDTH } from "@/pages/session/new-session-layout"
 import { PromptGitStatus, PromptWorkspaceSelector } from "@/components/prompt-workspace-selector"
-import { LaunchModeSelector } from "@/components/launch-mode-selector"
-import { useSwarmDirectory } from "@/pages/swarm/swarm-directory"
 import { useTitlebarRightMount } from "@/components/titlebar"
 import { useCommand } from "@/context/command"
 import { useProviders } from "@/hooks/use-providers"
@@ -111,15 +109,6 @@ export default function NewSessionPage() {
     onDone: promptInputV2Controller.restoreFocus,
   })
 
-  const swarmDirectory = useSwarmDirectory()
-  const swarmPrompt = createMemo(() =>
-    prompt
-      .current()
-      .filter((part) => part.type === "text")
-      .map((part) => part.content)
-      .join("\n"),
-  )
-
   command.register("new-session", () => [
     {
       id: "command.palette",
@@ -181,12 +170,6 @@ export default function NewSessionPage() {
               <div class={NEW_SESSION_CONTENT_WIDTH}>
                 <div class="flex flex-col gap-8">
                   <PromptInputV2Composer controller={promptInputV2Controller} />
-                  <LaunchModeSelector
-                    directory={swarmDirectory}
-                    prompt={swarmPrompt}
-                    onLocal={() => setStore("worktree", undefined)}
-                    onWorktree={() => setStore("worktree", "create")}
-                  />
                   <Show when={projectController.empty()}>
                     <PromptProjectAddButton controller={projectController} />
                   </Show>

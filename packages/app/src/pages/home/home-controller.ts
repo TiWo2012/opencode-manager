@@ -3,7 +3,6 @@ import { type HomeProjectSelection, useLayout } from "@/context/layout"
 import { ServerConnection, useServer } from "@/context/server"
 import { useServerSync } from "@/context/server-sync"
 import { useTabs } from "@/context/tabs"
-import { buildSwarmLaunchPath } from "@/pages/swarm/swarm-utils"
 import { toggleHomeProjectSelection } from "@/pages/layout/helpers"
 import { useNavigate } from "@solidjs/router"
 import { createEffect, createMemo } from "solid-js"
@@ -56,13 +55,6 @@ export function createHomeController() {
     void tabs.newDraft({ server: ServerConnection.key(conn), directory })
   }
 
-  function openProjectNewSwarm(conn: ServerConnection.Any, directory: string) {
-    const ctx = global.ensureServerCtx(conn)
-    ctx.projects.open(directory)
-    ctx.projects.touch(directory)
-    navigate(buildSwarmLaunchPath(directory))
-  }
-
   return {
     selection: {
       value: selection,
@@ -111,7 +103,6 @@ export function createHomeController() {
         openProjectNewSession(conn, project.worktree)
       },
       openProjectNewSession,
-      openProjectNewSwarm,
     },
   }
 }
