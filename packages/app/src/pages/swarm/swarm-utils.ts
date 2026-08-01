@@ -52,6 +52,13 @@ export function swarmStatusClass(status: Swarm.Status): string {
   return "bg-v2-background-bg-layer-01 text-v2-text-text-muted"
 }
 
+/** Builds the `/swarm/new` path carrying the directory (and optional draft prompt). */
+export function buildSwarmLaunchPath(directory: string, prompt?: string): string {
+  const params = new URLSearchParams({ directory })
+  if (prompt?.trim()) params.set("prompt", prompt)
+  return `/swarm/new?${params.toString()}`
+}
+
 /** Formats an elapsed duration in milliseconds as a short human string. */
 export function formatDuration(ms: number): string {
   if (ms >= 3_600_000) return `${Math.round(ms / 3_600_000)}h`
