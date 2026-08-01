@@ -341,6 +341,29 @@ it.effect("preserves ntfy servers when global config uses v1-style keys", () =>
   ),
 )
 
+it.effect("does not let a v1-style project config drop global ntfy servers", () =>
+  withConfigTree(
+    {
+      global: {
+        model: "lmstudio/qwen",
+        provider: { lmstudio: { npm: "@ai-sdk/openai-compatible" } },
+        ntfy: { enabled: true, servers: { home: { url: "https://ntfy.home.arpa", topic: "code" } } },
+      },
+      // V1-style keys (provider/tools) route this file through V1→V2 migration, which
+      // emits explicit `undefined` values for every unset field. Those must not clobber
+      // the higher-priority global values during the deep merge.
+      project: { provider: {}, tools: { "github-triage": false } },
+    },
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.ntfy?.servers).toEqual({
+        home: { url: "https://ntfy.home.arpa", topic: "code" },
+      })
+      expect(config.model).toBe("lmstudio/qwen")
+    }),
+  ),
+)
+
 it.effect("does not create global config when OPENCODE_CONFIG_DIR is set", () =>
   Effect.gen(function* () {
     const custom = yield* tmpdirScoped()

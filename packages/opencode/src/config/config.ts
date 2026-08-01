@@ -41,8 +41,15 @@ import { withTransientReadRetry } from "@/util/effect-http-client"
 // Custom merge function that concatenates array fields instead of replacing them
 // Keep remeda's deep conditional merge type out of hot config-loading paths; TS profiling showed it dominates here.
 // Uses RawConfig internally since V1-shape and V2-shape data coexist during loading.
+//
+// Sources may carry explicit `undefined` values: the V1→V2 migration emits a key for
+// every V1 field, whether or not it was set. mergeDeep replaces defined values with
+// those `undefined` entries, so a lower-priority config (e.g. a project `.opencode/`
+// file without an `ntfy` block) would wipe out a higher-priority one (the global
+// config). Drop `undefined`-valued keys before merging so "unset" never overrides.
 function mergeConfig(target: RawConfig, source: RawConfig): RawConfig {
-  return mergeDeep(target, source) as RawConfig
+  const defined = Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined)) as RawConfig
+  return mergeDeep(target, defined) as RawConfig
 }
 
 function mergeConfigConcatArrays(target: RawConfig, source: RawConfig): RawConfig {
