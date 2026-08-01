@@ -52,6 +52,7 @@ export type HomeProjectsViewProps = {
   onSelectProject: (server: ServerConnection.Any, directory: string) => void
   onAddProjects: (server: ServerConnection.Any, directories: string[]) => void
   onOpenProjectNewSession: (server: ServerConnection.Any, directory: string) => void
+  onOpenProjectNewSwarm: (server: ServerConnection.Any, directory: string) => void
   onEditProject: (server: ServerConnection.Any, project: LocalProject) => void
   onRevealProject: (server: ServerConnection.Any, project: LocalProject) => void
   onClearNotifications: (server: ServerConnection.Any, project: LocalProject) => void
@@ -478,7 +479,7 @@ function HomeProjectRow(
       <HomeProjectNavButton
         type="button"
         data-component="home-project-row"
-        class="pr-16 disabled:opacity-60"
+        class="pr-[88px] disabled:opacity-60"
         classList={{
           "bg-v2-background-bg-layer-01 text-v2-text-text-base": sortable.isDragSource(),
           "[box-shadow:inset_0_0_0_0.5px_var(--v2-border-border-muted)]": sortable.isDragSource(),
@@ -544,6 +545,9 @@ function HomeProjectRow(
               <MenuV2.Item onSelect={() => props.onOpenProjectNewSession(props.server, props.project.worktree)}>
                 {props.language.t("command.session.new")}
               </MenuV2.Item>
+              <MenuV2.Item onSelect={() => props.onOpenProjectNewSwarm(props.server, props.project.worktree)}>
+                {props.language.t("swarm.new")}
+              </MenuV2.Item>
               <MenuV2.Item onSelect={() => props.onEditProject(props.server, props.project)}>
                 {props.language.t("dialog.project.edit.title")}
               </MenuV2.Item>
@@ -568,6 +572,16 @@ function HomeProjectRow(
             </MenuV2.Content>
           </MenuV2.Portal>
         </MenuV2>
+        <TooltipV2 class="flex shrink-0 items-center" placement="bottom" value={props.language.t("swarm.new")}>
+          <IconButtonV2
+            data-action="home-project-new-swarm"
+            variant="ghost-muted"
+            size="small"
+            icon={<IconV2 name="grid-plus" />}
+            aria-label={props.language.t("swarm.new")}
+            onClick={() => props.onOpenProjectNewSwarm(props.server, props.project.worktree)}
+          />
+        </TooltipV2>
         <IconButtonV2
           data-action="home-project-new-session"
           variant="ghost-muted"

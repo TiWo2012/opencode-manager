@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { Swarm } from "@opencode-ai/schema/swarm"
 import {
   agentActions,
+  buildSwarmLaunchPath,
   canApprove,
   canStart,
   formatDuration,
@@ -111,6 +112,23 @@ describe("swarmStatusClass", () => {
     expect(swarmStatusClass("running")).toContain("info")
     expect(swarmStatusClass("paused")).toContain("warning")
     expect(swarmStatusClass("idle")).toContain("muted")
+  })
+})
+
+describe("buildSwarmLaunchPath", () => {
+  test("carries the directory and omits a missing prompt", () => {
+    expect(buildSwarmLaunchPath("/home/me/proj")).toBe("/swarm/new?directory=%2Fhome%2Fme%2Fproj")
+  })
+
+  test("appends the prompt only when non-empty", () => {
+    expect(buildSwarmLaunchPath("/proj", "add tests")).toBe("/swarm/new?directory=%2Fproj&prompt=add+tests")
+    expect(buildSwarmLaunchPath("/proj", "   ")).toBe("/swarm/new?directory=%2Fproj")
+  })
+
+  test("encodes reserved characters in the directory and prompt", () => {
+    expect(buildSwarmLaunchPath("/proj a?b&c#d", "who & why?")).toBe(
+      "/swarm/new?directory=%2Fproj+a%3Fb%26c%23d&prompt=who+%26+why%3F",
+    )
   })
 })
 
