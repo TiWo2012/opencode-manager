@@ -12,6 +12,7 @@ import { testEffect } from "../lib/effect"
 import { MessageID, SessionID } from "../../src/session/schema"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
+import { RuntimeFlags } from "../../src/effect/runtime-flags"
 
 const noopBootstrap = Layer.succeed(InstanceBootstrap.Service, InstanceBootstrap.Service.of({ run: Effect.void }))
 const env = AppNodeBuilder.build(
@@ -19,6 +20,22 @@ const env = AppNodeBuilder.build(
   [[InstanceStore.bootstrapNode, noopBootstrap]],
 )
 const it = testEffect(env)
+
+// Yolo mode (--yolo / OPENCODE_YOLO) auto-allows external directory access.
+const yoloEnv = AppNodeBuilder.build(
+  LayerNode.group([
+    Permission.node,
+    EventV2Bridge.node,
+    CrossSpawnSpawner.node,
+    InstanceStore.node,
+    RuntimeFlags.node,
+  ]),
+  [
+    [InstanceStore.bootstrapNode, noopBootstrap],
+    [RuntimeFlags.node, RuntimeFlags.layer({ swarmYolo: true })],
+  ],
+)
+const itYolo = testEffect(yoloEnv)
 
 const rejectAll = (message?: string) =>
   Effect.gen(function* () {
@@ -1169,6 +1186,63 @@ it.instance(
       const exit = yield* Fiber.await(fiber)
       expect(Exit.isFailure(exit)).toBe(true)
       if (Exit.isFailure(exit)) expect(Cause.squash(exit.cause)).toBeInstanceOf(PermissionV1.RejectedError)
+    }),
+  { git: true },
+)
+
+it.instance(
+  "ask - still asks for external_directory outside yolo mode",
+  () =>
+    Effect.gen(function* () {
+      const fiber = yield* ask({
+        sessionID: SessionID.make("session_test"),
+        permission: "external_directory",
+        patterns: ["/home/timo/*"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "external_directory", pattern: "*", action: "ask" }],
+      }).pipe(Effect.forkScoped)
+
+      expect(yield* waitForPending(1)).toHaveLength(1)
+      yield* rejectAll()
+      yield* Fiber.await(fiber)
+    }),
+  { git: true },
+)
+
+itYolo.instance(
+  "ask - auto-allows external_directory in yolo mode",
+  () =>
+    Effect.gen(function* () {
+      const result = yield* ask({
+        sessionID: SessionID.make("session_test"),
+        permission: "external_directory",
+        patterns: ["/home/timo/*"],
+        metadata: {},
+        always: [],
+        ruleset: [{ permission: "external_directory", pattern: "*", action: "ask" }],
+      })
+      expect(result).toBeUndefined()
+      expect(yield* list()).toHaveLength(0)
+    }),
+  { git: true },
+)
+
+itYolo.instance(
+  "ask - deny rules still win for external_directory in yolo mode",
+  () =>
+    Effect.gen(function* () {
+      const err = yield* fail(
+        ask({
+          sessionID: SessionID.make("session_test"),
+          permission: "external_directory",
+          patterns: ["/home/timo/*"],
+          metadata: {},
+          always: [],
+          ruleset: [{ permission: "external_directory", pattern: "*", action: "deny" }],
+        }),
+      )
+      expect(err).toBeInstanceOf(PermissionV1.DeniedError)
     }),
   { git: true },
 )

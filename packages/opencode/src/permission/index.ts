@@ -1,8 +1,9 @@
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { ConfigPermissionV1 } from "@opencode-ai/core/v1/config/permission"
 import { InstanceState } from "@/effect/instance-state"
+import { RuntimeFlags } from "@/effect/runtime-flags"
 import { Wildcard } from "@opencode-ai/core/util/wildcard"
-import { Deferred, Effect, Layer, Context } from "effect"
+import { Deferred, Effect, Layer, Context, Option } from "effect"
 import os from "os"
 import { PermissionV1 } from "@opencode-ai/core/v1/permission"
 import { EventV2Bridge } from "@/event-v2-bridge"
@@ -80,6 +81,13 @@ const layer = Layer.effect(
         if (rule.action === "allow") continue
         needsAsk = true
       }
+
+      // Yolo mode (--yolo / OPENCODE_YOLO) allows external directory access (e.g. `..`
+      // outside the project) without prompting. Deny rules above still win. The runtime
+      // flags service is optional so tests and embedded contexts that omit it keep the
+      // default ask behavior.
+      const flags = yield* Effect.serviceOption(RuntimeFlags.Service)
+      if (Option.isSome(flags) && flags.value.swarmYolo && request.permission === "external_directory") return
 
       if (!needsAsk) return
 
@@ -218,6 +226,10 @@ export function visibleTools<T>(tools: Record<string, T>, ruleset: PermissionV1.
   return Object.fromEntries(Object.entries(tools).filter(([name]) => !hidden.has(name)))
 }
 
-export const node = LayerNode.make({ service: Service, layer: layer, deps: [EventV2Bridge.node] })
+export const node = LayerNode.make({
+  service: Service,
+  layer: layer,
+  deps: [EventV2Bridge.node, RuntimeFlags.node],
+})
 
 export * as Permission from "."
