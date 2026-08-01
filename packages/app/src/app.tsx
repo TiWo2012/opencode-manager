@@ -73,6 +73,10 @@ import { LegacyHome } from "@/pages/home/legacy-home"
 
 const NewSession = lazy(() => import("@/pages/new-session"))
 
+const SwarmList = lazy(() => import("@/pages/swarm/swarm-list"))
+const SwarmCreate = lazy(() => import("@/pages/swarm/swarm-create"))
+const SwarmDetail = lazy(() => import("@/pages/swarm/swarm-detail"))
+
 const SessionRoute = () => {
   const settings = useSettings()
   const params = useParams()
@@ -633,6 +637,9 @@ function Routes(props: { serverScoped?: JSX.Element }) {
         <Route path="/" component={NewHome} />
         <Route path="/:dir/session/:id" component={NewLayoutLegacySessionRedirect} />
         <Route path="/server/:serverKey/session/:id" component={TargetSessionRoute} />
+        <Route path="/swarm" component={SwarmList} />
+        <Route path="/swarm/new" component={SwarmCreate} />
+        <Route path="/swarm/:id" component={SwarmDetail} />
       </Show>
       <Route path="/new-session" component={DraftRoute} />
     </>
