@@ -87,6 +87,30 @@ describe("Config", () => {
     }),
   )
 
+  it.effect("carries ntfy configuration through v1 migration", () =>
+    Effect.sync(() => {
+      const migrated = ConfigMigrateV1.migrate({
+        model: "lmstudio/qwen",
+        provider: { lmstudio: { npm: "@ai-sdk/openai-compatible" } },
+        ntfy: {
+          enabled: true,
+          servers: {
+            home: { url: "https://ntfy.home.arpa", topic: "code" },
+          },
+        },
+      })
+
+      expect(migrated.ntfy).toEqual({
+        enabled: true,
+        servers: {
+          home: { url: "https://ntfy.home.arpa", topic: "code" },
+        },
+      })
+      // The migrated output must remain valid v2 config for downstream decode.
+      Schema.decodeUnknownSync(Config.Info)(migrated, { errors: "all" })
+    }),
+  )
+
   it.effect("migrates v1 provider setup options into AISDK settings", () =>
     Effect.sync(() => {
       const migrated = ConfigMigrateV1.migrate({

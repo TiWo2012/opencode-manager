@@ -319,6 +319,28 @@ it.effect("creates global jsonc config with schema when no global configs exist"
   ),
 )
 
+it.effect("preserves ntfy servers when global config uses v1-style keys", () =>
+  withGlobalConfig(
+    {
+      config: {
+        model: "lmstudio/qwen",
+        provider: { lmstudio: { npm: "@ai-sdk/openai-compatible" } },
+        ntfy: {
+          enabled: true,
+          servers: { home: { url: "https://ntfy.home.arpa", topic: "code" } },
+        },
+      },
+    },
+    ({ dir }) =>
+      Effect.gen(function* () {
+        const config = yield* Config.use.get().pipe(provideInstanceEffect(dir))
+        expect(config.ntfy?.servers).toEqual({
+          home: { url: "https://ntfy.home.arpa", topic: "code" },
+        })
+      }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
+  ),
+)
+
 it.effect("does not create global config when OPENCODE_CONFIG_DIR is set", () =>
   Effect.gen(function* () {
     const custom = yield* tmpdirScoped()
