@@ -39,6 +39,7 @@ import {
   registerRendererProtocol,
   setRelaunchHandler,
   setAppQuitting,
+  isAppQuitting,
   setBackgroundColor,
   setDockIcon,
   restoreMainWindows,
@@ -230,10 +231,20 @@ const main = Effect.gen(function* () {
   })
 
   app.on("child-process-gone", (_event, details) => {
+    // Utility processes (network service, sidecar) are deliberately killed
+    // while quitting; only surface unexpected crashes as errors.
+    if (isAppQuitting()) {
+      writeLog("utility", "child process gone", { details })
+      return
+    }
     writeLog("utility", "child process gone", { details }, "error")
   })
 
   app.on("render-process-gone", (_event, webContents, details) => {
+    if (isAppQuitting() || details.reason === "clean-exit") {
+      writeLog("window", "app render process gone", { url: safeWebContentsURL(webContents), details })
+      return
+    }
     writeLog("window", "app render process gone", { url: safeWebContentsURL(webContents), details }, "error")
   })
 

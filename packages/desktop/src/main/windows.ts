@@ -8,7 +8,7 @@ import { app, BrowserWindow, dialog, net, nativeImage, nativeTheme, protocol } f
 import { dirname, isAbsolute, join, relative, resolve } from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import type { TitlebarTheme } from "../preload/types"
-import { exportDebugLogs, write as writeLog } from "./logging"
+import { exportDebugLogs, setRendererIpcEnabled, write as writeLog } from "./logging"
 import { getStore, removeStoreFile } from "./store"
 import { PINCH_ZOOM_ENABLED_KEY, WINDOW_IDS_KEY } from "./store-keys"
 import { createUnresponsiveSampler } from "./unresponsive"
@@ -69,6 +69,14 @@ export function setRelaunchHandler(handler: () => void) {
 
 export function setAppQuitting(quitting = true) {
   registry.setQuitting(quitting)
+  // Stop forwarding log lines to the renderer once it starts tearing down;
+  // sending IPC to a disposed frame throws "Render frame was disposed" for
+  // every log written during quit, spamming the console.
+  setRendererIpcEnabled(!quitting)
+}
+
+export function isAppQuitting() {
+  return registry.isQuitting()
 }
 
 export function setBackgroundColor(color: string) {
@@ -387,7 +395,16 @@ function wireWindowRecovery(win: BrowserWindow, name: string) {
   })
   win.webContents.on("render-process-gone", (_event, details) => {
     sampler.stopAndFlush()
-    writeLog("window", "renderer process gone", { window: name, currentURL: safeWindowURL(win), details }, "error")
+    // A clean exit is expected while quitting (the app tears the renderer down
+    // itself); only treat a crash while the app is running as an error.
+    const expected = isAppQuitting() || details.reason === "clean-exit"
+    writeLog(
+      "window",
+      "renderer process gone",
+      { window: name, currentURL: safeWindowURL(win), details },
+      expected ? "info" : "error",
+    )
+    if (expected) return
     void show(
       "OpenCode Manager window terminated unexpectedly",
       [`Window: ${name}`, `Reason: ${details.reason}`, `Code: ${details.exitCode ?? "<unknown>"}`].join("\n"),
@@ -400,7 +417,7 @@ function wireWindowRecovery(win: BrowserWindow, name: string) {
     void show("OpenCode Manager is not responding", "You can relaunch the app, open the logs, or keep waiting.", true)
   })
   win.on("responsive", () => {
-    writeLog("window", "renderer responsive", { window: name, currentURL: safeWindowURL(win) }, "error")
+    writeLog("window", "renderer responsive", { window: name, currentURL: safeWindowURL(win) })
     sampler.stopAndFlush()
   })
   win.webContents.on("console-message", (_event, level, message, line, sourceId) => {

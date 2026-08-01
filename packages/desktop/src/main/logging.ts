@@ -19,6 +19,22 @@ let netLogPath: string | undefined
 let logger: MainLogger
 export const getLogger = () => logger
 
+// electron-log's IPC transport forwards main-process log lines to the renderer.
+// Once the renderer starts tearing down (app quit / relaunch) `webContents.send`
+// throws "Render frame was disposed" for every log line, spamming the console.
+// Keep the previous level so it can be restored if quitting is cancelled.
+let ipcTransportLevel: typeof log.transports.ipc.level | undefined
+export function setRendererIpcEnabled(enabled: boolean) {
+  const ipc = log.transports.ipc
+  if (!ipc) return
+  if (enabled) {
+    if (ipcTransportLevel !== undefined) ipc.level = ipcTransportLevel
+  } else {
+    ipcTransportLevel = ipc.level
+    ipc.level = false
+  }
+}
+
 export function initLogging() {
   initRunDirectory()
   log.transports.file.maxSize = 5 * 1024 * 1024
