@@ -30,7 +30,11 @@ export function createSwarmClient(
   directory: string | Accessor<string>,
   input?: { serverSDK?: () => ServerSDK; fetch?: typeof globalThis.fetch },
 ): SwarmClient {
-  const serverSDK = input?.serverSDK ?? (() => useServerSDK()())
+  // Resolve the server SDK accessor once here (inside the provider render),
+  // not lazily per request. `useServerSDK()` reads Solid context and only works
+  // while a reactive owner is current — async event handlers have no owner, so
+  // calling it there throws "ServerSDK context must be used within a provider".
+  const serverSDK = input?.serverSDK ?? useServerSDK()
   const fetch_ = input?.fetch ?? usePlatform().fetch ?? globalThis.fetch
   const currentDirectory = () => (typeof directory === "function" ? directory() : directory)
 

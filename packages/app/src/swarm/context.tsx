@@ -23,6 +23,10 @@ export const { use: useSwarm, provider: SwarmProvider } = createSimpleContext({
   name: "Swarm",
   init: (props: { directory: string | Accessor<string> }) => {
     const client = createSwarmClient(props.directory)
+    // Resolve the server SDK accessor once, inside the provider render. Calling
+    // `useServerSDK()` from event handlers / async code throws (no reactive
+    // owner), so keep the accessor and invoke it instead.
+    const serverSDK = useServerSDK()
     const [store, setStore] = createStore<SwarmState>({
       swarms: [],
       loaded: false,
@@ -104,12 +108,12 @@ export const { use: useSwarm, provider: SwarmProvider } = createSimpleContext({
     // Skip both until we have a concrete directory — an empty value would POST
     // `x-opencode-directory: undefined` to the server.
     let unsubscribe: (() => void) | undefined
-    const subscription = () => [currentDirectory(), useServerSDK()().url] as const
+    const subscription = () => [currentDirectory(), serverSDK().url] as const
     createEffect(
       on(subscription, ([directory]) => {
         unsubscribe?.()
         if (!directory) return
-        unsubscribe = useServerSDK()().event.on(directory, handleEvent)
+        unsubscribe = serverSDK().event.on(directory, handleEvent)
         void refresh()
       }),
     )
