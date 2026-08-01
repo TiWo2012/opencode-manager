@@ -461,11 +461,14 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   )
 
   // Remember the last non-swarm route so Ctrl+S (swarm.open) can toggle back
-  // out of swarm mode to where the user was before.
+  // out of swarm mode to where the user was before. Snapshot the route instead
+  // of keeping the store proxy: a Solid store proxy always reflects the current
+  // route, so once in swarm mode it would read back `{ type: "swarm" }` and
+  // toggling out would re-enter swarm instead of returning to the previous view.
   const [swarmReturnRoute, setSwarmReturnRoute] = createSignal<Route>()
   createEffect(() => {
     if (route.data.type !== "swarm") {
-      setSwarmReturnRoute(route.data)
+      setSwarmReturnRoute({ ...route.data })
     }
   })
 
