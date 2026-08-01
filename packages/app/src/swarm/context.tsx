@@ -101,11 +101,14 @@ export const { use: useSwarm, provider: SwarmProvider } = createSimpleContext({
 
     // Resubscribe and refresh when the directory (or server) changes. The base
     // SSE stream reconnects on its own; this only re-registers the listener.
+    // Skip both until we have a concrete directory — an empty value would POST
+    // `x-opencode-directory: undefined` to the server.
     let unsubscribe: (() => void) | undefined
     const subscription = () => [currentDirectory(), useServerSDK()().url] as const
     createEffect(
       on(subscription, ([directory]) => {
         unsubscribe?.()
+        if (!directory) return
         unsubscribe = useServerSDK()().event.on(directory, handleEvent)
         void refresh()
       }),

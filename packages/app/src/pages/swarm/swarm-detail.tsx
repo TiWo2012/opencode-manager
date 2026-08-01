@@ -1,7 +1,6 @@
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
 import { DialogBody, DialogFooter, DialogHeader, DialogTitleGroup, DialogV2 } from "@opencode-ai/ui/v2/dialog-v2"
 import { Icon as IconV2 } from "@opencode-ai/ui/v2/icon"
-import { TextareaV2 } from "@opencode-ai/ui/v2/textarea-v2"
 import { ScrollView } from "@opencode-ai/ui/scroll-view"
 import { Spinner } from "@opencode-ai/ui/spinner"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -422,10 +421,10 @@ function SwarmRetryDialog(props: { agentName: string; onSubmit: (message: string
         />
       </DialogHeader>
       <DialogBody class="w-80">
-        <TextareaV2
+        <textarea
           data-component="swarm-retry-input"
           rows={3}
-          class="w-full"
+          class="w-full resize-none rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-layer-01 px-3.5 py-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none transition-[border-color,background-color] duration-150 ease-in-out placeholder:text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 focus:border-v2-border-border-focus"
           placeholder={language.t("swarm.agent.feedback.placeholder")}
           value={message()}
           onInput={(event) => setMessage(event.currentTarget.value)}

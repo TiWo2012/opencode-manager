@@ -113,7 +113,7 @@ describe("createSwarmClient", () => {
   test("falls back to a status message when the error body has no message", async () => {
     const { client } = setup(() => new Response("nope", { status: 500 }))
 
-    await expect(client.start("swm_1")).rejects.toThrow("Swarm request failed (500)")
+    await expect(client.start("swm_1")).rejects.toThrow(/^Swarm request failed \(500/)
   })
 
   test("resolves the directory from an accessor per call", async () => {

@@ -39,8 +39,11 @@ export function createSwarmClient(
     const server = sdk.server.http
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "x-opencode-directory": currentDirectory(),
     }
+    // Only route to a concrete directory. An empty value would be serialized as
+    // the string "undefined" and make the server resolve a bogus instance.
+    const directory = currentDirectory()
+    if (directory) headers["x-opencode-directory"] = directory
     if (server.password) {
       headers.Authorization = `Basic ${authTokenFromCredentials({ username: server.username, password: server.password })}`
     }
@@ -51,7 +54,7 @@ export function createSwarmClient(
     })
     if (!response.ok) {
       const error = (await response.json().catch(() => undefined)) as { data?: { message?: string } } | undefined
-      throw new Error(error?.data?.message ?? `Swarm request failed (${response.status})`)
+      throw new Error(error?.data?.message ?? `Swarm request failed (${response.status} ${response.statusText})`)
     }
     return (await response.json()) as T
   }

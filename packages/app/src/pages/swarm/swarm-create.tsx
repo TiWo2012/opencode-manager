@@ -1,5 +1,4 @@
 import { ButtonV2 } from "@opencode-ai/ui/v2/button-v2"
-import { TextareaV2 } from "@opencode-ai/ui/v2/textarea-v2"
 import { useNavigate, useSearchParams } from "@solidjs/router"
 import type { Swarm } from "@opencode-ai/schema/swarm"
 import { createMemo, createSignal, Show } from "solid-js"
@@ -17,13 +16,13 @@ export default function SwarmCreate() {
   return (
     <SwarmProvider directory={directory}>
       <Show when={directory()}>
-        <SwarmCreateContent />
+        <SwarmCreateContent directory={directory} />
       </Show>
     </SwarmProvider>
   )
 }
 
-function SwarmCreateContent() {
+function SwarmCreateContent(props: { directory: () => string }) {
   const swarm = useSwarm()
   const language = useLanguage()
   const navigate = useNavigate()
@@ -53,13 +52,18 @@ function SwarmCreateContent() {
   return (
     <div class="m-2 min-h-0 flex-1 self-stretch overflow-hidden rounded-[10px] bg-v2-background-bg-base shadow-[var(--v2-elevation-raised)]">
       <div class="mx-auto flex min-h-full w-full max-w-[720px] flex-col gap-5 px-3 py-6 lg:px-6">
-        <h1 class="text-[15px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base">
-          {language.t("swarm.create.title")}
-        </h1>
-        <TextareaV2
+        <div class="flex flex-col gap-1.5">
+          <h1 class="text-[15px] font-[530] leading-5 tracking-[-0.04px] text-v2-text-text-base">
+            {language.t("swarm.create.title")}
+          </h1>
+          <p class="truncate text-[11px] font-[440] leading-4 tracking-[-0.04px] text-v2-text-text-muted">
+            {props.directory()}
+          </p>
+        </div>
+        <textarea
           data-component="swarm-create-input"
           rows={4}
-          class="w-full"
+          class="w-full resize-none rounded-[10px] border border-v2-border-border-base bg-v2-background-bg-layer-01 px-3.5 py-3 text-[13px] font-[440] leading-5 tracking-[-0.04px] text-v2-text-text-base outline-none transition-[border-color,background-color] duration-150 ease-in-out placeholder:text-v2-text-text-faint hover:bg-v2-background-bg-layer-02 focus:border-v2-border-border-focus disabled:cursor-not-allowed disabled:opacity-60"
           placeholder={language.t("swarm.create.placeholder")}
           value={title()}
           disabled={busy()}
